@@ -29,7 +29,7 @@ const cardsGiven = IO.counter({
     id: 'app/stb/cards/given'
 })
 
-var trustedAccounts = Array.from(config.trusted_accounts);
+var friends = Array.from(config.friends);
 var identitySecret = config.identity_secret;
 
 // Disables asking for Steam Guard Code
@@ -53,13 +53,13 @@ client.on("error", function (e) {
 });
 
 // If last Steam Guard Code was wrong, here a new one is created
-client.on("steamGuard", function(domain, callback, lastCodeWrong) {
-    if(lastCodeWrong) {
+client.on("steamGuard", function (domain, callback, lastCodeWrong) {
+    if (lastCodeWrong) {
         console.log("Last code wrong, try again!");
     } else {
         console.log("Authorized with Steam Guard Code")
     }
-    setTimeout(function() {
+    setTimeout(function () {
         callback(SteamTotp.generateAuthCode(config.shared_secret));
     }, 31000);
 });
@@ -82,7 +82,7 @@ manager.on('newOffer', function (offer) {
 
     console.log(`==== start of offer validation for ${offer.id} ====`)
 
-    var offerFromTrustedAccount = trustedAccounts.find(acc => acc === offer.partner.getSteamID64()) != null;
+    var offerFromFriend = friends.find(acc => acc === offer.partner.getSteamID64()) != null;
 
     var itemsToGet = Array.from(offer.itemsToReceive);
     var itemsToGive = Array.from(offer.itemsToGive);
@@ -167,13 +167,20 @@ manager.on('newOffer', function (offer) {
         var crossSetItemCountValid = normalCardsToGive * 2 <= normalCardsToReceive
             && foilCardsToGive * 2 <= foilCardsToReceive;
 
+        var crossSetItemCountValidFriends = normalCardsToGive * 2 <= normalCardsToReceive
+            && foilCardsToGive * 2 <= foilCardsToReceive;
+
         console.log(`${normalCardsToGive} cards to give and ${normalCardsToReceive} cards to receive.`);
         console.log(`${foilCardsToGive} foil cards to give and ${foilCardsToReceive} foil cards to receive.`);
 
     }
 
 
-    if (offerFromTrustedAccount || (itemsToReceiveAreTradingCards && (itemsToGiveAreTradingCards || itemsToGive.length === 0) && (crossSetItemCountValid || itemsToGive.length === 0))) {
+    if (itemsToReceiveAreTradingCards
+        && (itemsToGiveAreTradingCards || itemsToGive.length === 0)
+        && ((crossSetItemCountValid ||
+                (offerFromFriend && crossSetItemCountValidFriends))
+            || itemsToGive.length === 0)) {
         offer.accept((err, status) => {
             if (err) {
                 console.log(err);
