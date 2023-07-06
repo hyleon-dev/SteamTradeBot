@@ -5,7 +5,7 @@ module.exports = {
             script: "./index.js",
             instances: 1,
             max_memory_restart: "150M",
-            cron_restart: "0 0 4 ? * * *",
+            cron_restart: "0 4 * * *",
             // Logging
             out_file: "./out.log",
             error_file: "./error.log",
