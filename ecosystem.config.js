@@ -17,7 +17,13 @@ module.exports = {
                 "./node_modules",
                 "./.DS_Store",
                 "./package.json",
+                "./package-lock.json",
                 "./yarn.lock",
+                "./error.log",
+                "./out.log",
+                "./app.log",
+                "./*.log",
+                "./.git",
             ],
             // Env Specific Config
             /*env_production: {
