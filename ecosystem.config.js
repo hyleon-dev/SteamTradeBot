@@ -12,7 +12,7 @@ module.exports = {
             merge_logs: true,
             log_date_format: "DD-MM-YY HH:mm:ss Z",
             log_type: "raw",
-            watch: true,
+            watch: false,
             ignore_watch: [
                 "./node_modules",
                 "./.DS_Store",
