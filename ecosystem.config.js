@@ -11,7 +11,7 @@ module.exports = {
             error_file: "./error.log",
             merge_logs: true,
             log_date_format: "DD-MM-YY HH:mm:ss Z",
-            log_type: "raw",
+            log_type: "format",
             watch: false,
             ignore_watch: [
                 "./node_modules",
