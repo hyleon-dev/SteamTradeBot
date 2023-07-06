@@ -119,9 +119,12 @@ manager.on('newOffer', function (offer) {
             if (itemsToGiveOfGameInTrade.length /* * 2*/ <= itemsToReceiveOfGameInTrade.length) {
                 for (var i = 0; i < itemsToGiveOfGameInTrade.length; i++) {
                     itemsToGive.splice(itemsToGive.indexOf(itemsToGiveOfGameInTrade.at(i)), 1)
+                    console.log(`Sorted card to give out: ${itemsToGiveOfGameInTrade.at(i).market_name}`)
                     itemsToGet.splice(itemsToGet.indexOf(itemsToReceiveOfGameInTrade.at(i)), 1) // us this for 1:1 trades
+                    console.log(`Sorted card to receive out: ${itemsToReceiveOfGameInTrade.at(i).market_name}`)
                 }
-                console.log(`${i} cards sorted out because of 1:1 trades.`)
+                console.log(`${i} cards each side sorted out because of 1:1 trades for ${itemToGive.type}.`)
+                console.log(`====`)
                 /*for (var j = 0; j < itemsToReceiveOfGameInTrade.length; j++) {
                     itemsToGet.splice(itemsToGet.indexOf(itemsToReceiveOfGameInTrade.at(j)), 1) // use this for 2:1 trades
                 }*/
@@ -140,11 +143,14 @@ manager.on('newOffer', function (offer) {
                 if (itemsToGiveOfGameInTrade.length >= itemsToReceiveOfGameInTrade.length * 2) {
                     for (var i = 0; i < itemsToReceiveOfGameInTrade.length * 2; i++) {
                         itemsToGive.splice(itemsToGive.indexOf(itemsToGiveOfGameInTrade.at(i)), 1)
+                        console.log(`Sorted card to give out: ${itemsToGiveOfGameInTrade.at(i).market_name} (${itemsToGiveOfGameInTrade.at(i).type})`)
                     }
                     for (var j = 0; j < itemsToReceiveOfGameInTrade.length; j++) {
                         itemsToGet.splice(itemsToGet.indexOf(itemsToReceiveOfGameInTrade.at(j)), 1)
+                        console.log(`Sorted card to receive out: ${itemsToReceiveOfGameInTrade.at(j).market_name} (${itemsToReceiveOfGameInTrade.at(j).type})`)
                     }
-                    console.log(`${i} cards to give and ${j} sale cards to receive sorted out.`)
+                    console.log(`${i} sale cards to give and ${j} sale cards to receive sorted out.`)
+                    console.log(`====`)
                 }
             }
         })
@@ -170,17 +176,21 @@ manager.on('newOffer', function (offer) {
         var crossSetItemCountValidFriends = normalCardsToGive * 2 <= normalCardsToReceive
             && foilCardsToGive * 2 <= foilCardsToReceive;
 
-        console.log(`${normalCardsToGive} cards to give and ${normalCardsToReceive} cards to receive.`);
-        console.log(`${foilCardsToGive} foil cards to give and ${foilCardsToReceive} foil cards to receive.`);
+        itemsToGive.forEach(item => {
+            console.log(`Card to give left: ${item.market_name} (${item.type})`)
+        })
+
+        itemsToGet.forEach(item => {
+            console.log(`Card to receive left: ${item.market_name} (${item.type})`)
+        })
+
+        console.log(`${normalCardsToGive} cards to give and ${normalCardsToReceive} cards to receive left.`);
+        console.log(`${foilCardsToGive} foil cards to give and ${foilCardsToReceive} foil cards to receive left.`);
 
     }
 
 
-    if (itemsToReceiveAreTradingCards
-        && (itemsToGiveAreTradingCards || itemsToGive.length === 0)
-        && ((crossSetItemCountValid ||
-                (offerFromFriend && crossSetItemCountValidFriends))
-            || itemsToGive.length === 0)) {
+    if (itemsToReceiveAreTradingCards && (itemsToGiveAreTradingCards || itemsToGive.length === 0) && ((crossSetItemCountValid || (offerFromFriend && crossSetItemCountValidFriends)) || itemsToGive.length === 0)) {
         offer.accept((err, status) => {
             if (err) {
                 console.log(err);
