@@ -38,7 +38,8 @@ client.setOption("promptSteamGuardCode", false);
 
 client.logOn({
     accountName: config.username,
-    password: config.password
+    password: config.password,
+    logonID: Math.floor(Math.random() * 1000) + 1
 });
 
 // Log in
