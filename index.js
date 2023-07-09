@@ -31,6 +31,7 @@ const cardsGiven = IO.counter({
 
 var friends = Array.from(config.friends);
 var identitySecret = config.identity_secret;
+var saleMarketFeeAppId = config.sale_market_fee_app_id
 
 // Disables asking for Steam Guard Code
 client.setOption("promptSteamGuardCode", false);
@@ -116,14 +117,16 @@ manager.on('newOffer', function (offer) {
                 item.market_fee_app === itemToGive.market_fee_app
                 && item.tags.find(tag => tag.category === "cardborder").internal_name === itemToGive.tags.find(tag => tag.category === "cardborder").internal_name);
 
-            if (itemsToGiveOfGameInTrade.length /* * 2*/ <= itemsToReceiveOfGameInTrade.length) {
-                for (var i = 0; i < itemsToGiveOfGameInTrade.length; i++) {
-                    itemsToGive.splice(itemsToGive.indexOf(itemsToGiveOfGameInTrade.at(i)), 1)
-                    console.log(`Sorted card to give out: ${itemsToGiveOfGameInTrade.at(i).market_name}`)
-                    itemsToGet.splice(itemsToGet.indexOf(itemsToReceiveOfGameInTrade.at(i)), 1) // us this for 1:1 trades
-                    console.log(`Sorted card to receive out: ${itemsToReceiveOfGameInTrade.at(i).market_name}`)
+            if (itemsToReceiveOfGameInTrade.length >> 0 && itemsToGiveOfGameInTrade.length >> 0) {
+                var count = 0;
+                while (count +1 <= itemsToReceiveOfGameInTrade.length && count +1 <= itemsToGiveOfGameInTrade.length) {
+                    itemsToGive.splice(itemsToGive.indexOf(itemsToGiveOfGameInTrade.at(count)), 1)
+                    console.log(`Sorted card to give out: ${itemsToGiveOfGameInTrade.at(count).market_name}`)
+                    itemsToGet.splice(itemsToGet.indexOf(itemsToReceiveOfGameInTrade.at(count)), 1) // us this for 1:1 trades
+                    console.log(`Sorted card to receive out: ${itemsToReceiveOfGameInTrade.at(count).market_name}`)
+                    count++;
                 }
-                console.log(`${i} cards each side sorted out because of 1:1 trades for ${itemToGive.type}.`)
+                console.log(`${count} cards each side sorted out because of 1:1 trades for ${itemToGive.type}.`)
                 console.log(`====`)
                 /*for (var j = 0; j < itemsToReceiveOfGameInTrade.length; j++) {
                     itemsToGet.splice(itemsToGet.indexOf(itemsToReceiveOfGameInTrade.at(j)), 1) // use this for 2:1 trades
@@ -131,13 +134,14 @@ manager.on('newOffer', function (offer) {
             }
         })
 
-        // removes sale cards
+        // removes cards for special sale cards condition
         itemsToGet.forEach(itemToGet => {
-            if (itemToGet.market_fee_app === "2459330") {
+            if (itemToGet.market_fee_app === saleMarketFeeAppId) {
                 var itemsToGiveOfGameInTrade = itemsToGive.filter(item =>
-                    item.tags.find(tag => tag.category === "cardborder").internal_name === itemToGet.tags.find(tag => tag.category === "cardborder").internal_name);
-                var itemsToReceiveOfGameInTrade = itemsToGet.filter(item =>
                     item.market_fee_app !== itemToGet.market_fee_app
+                    && item.tags.find(tag => tag.category === "cardborder").internal_name === itemToGet.tags.find(tag => tag.category === "cardborder").internal_name);
+                var itemsToReceiveOfGameInTrade = itemsToGet.filter(item =>
+                    item.market_fee_app === itemToGet.market_fee_app
                     && item.tags.find(tag => tag.category === "cardborder").internal_name === itemToGet.tags.find(tag => tag.category === "cardborder").internal_name);
 
                 if (itemsToGiveOfGameInTrade.length <= itemsToReceiveOfGameInTrade.length * 2) {
