@@ -137,10 +137,10 @@ manager.on('newOffer', function (offer) {
                 var itemsToGiveOfGameInTrade = itemsToGive.filter(item =>
                     item.tags.find(tag => tag.category === "cardborder").internal_name === itemToGet.tags.find(tag => tag.category === "cardborder").internal_name);
                 var itemsToReceiveOfGameInTrade = itemsToGet.filter(item =>
-                    item.market_fee_app === itemToGet.market_fee_app
+                    item.market_fee_app !== itemToGet.market_fee_app
                     && item.tags.find(tag => tag.category === "cardborder").internal_name === itemToGet.tags.find(tag => tag.category === "cardborder").internal_name);
 
-                if (itemsToGiveOfGameInTrade.length >= itemsToReceiveOfGameInTrade.length * 2) {
+                if (itemsToGiveOfGameInTrade.length <= itemsToReceiveOfGameInTrade.length * 2) {
                     for (var i = 0; i < itemsToReceiveOfGameInTrade.length * 2; i++) {
                         itemsToGive.splice(itemsToGive.indexOf(itemsToGiveOfGameInTrade.at(i)), 1)
                         console.log(`Sorted card to give out: ${itemsToGiveOfGameInTrade.at(i).market_name} (${itemsToGiveOfGameInTrade.at(i).type})`)
