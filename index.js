@@ -145,7 +145,7 @@ manager.on('newOffer', function (offer) {
                     item.market_fee_app === itemToGet.market_fee_app
                     && item.tags.find(tag => tag.category === "cardborder").internal_name === itemToGet.tags.find(tag => tag.category === "cardborder").internal_name);
 
-                if (itemsToGiveOfGameInTrade.length <= itemsToReceiveOfGameInTrade.length * 2) {
+                if ((itemsToReceiveOfGameInTrade.length >= 1 && itemsToGiveOfGameInTrade.length >= 2) && itemsToGiveOfGameInTrade.length <= itemsToReceiveOfGameInTrade.length * 2) {
                     for (var i = 0; i < itemsToReceiveOfGameInTrade.length * 2; i++) {
                         itemsToGive.splice(itemsToGive.indexOf(itemsToGiveOfGameInTrade.at(i)), 1)
                         console.log(`Sorted card to give out: ${itemsToGiveOfGameInTrade.at(i).market_name} (${itemsToGiveOfGameInTrade.at(i).type})`)
@@ -193,7 +193,6 @@ manager.on('newOffer', function (offer) {
         console.log(`${foilCardsToGive} foil cards to give and ${foilCardsToReceive} foil cards to receive left.`);
 
     }
-
 
     if (itemsToReceiveAreTradingCards && (itemsToGiveAreTradingCards || itemsToGive.length === 0) && ((crossSetItemCountValid || (offerFromFriend && crossSetItemCountValidFriends)) || itemsToGive.length === 0)) {
         offer.accept((err, status) => {
