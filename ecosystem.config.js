@@ -1,16 +1,16 @@
 module.exports = {
     apps: [
         {
-            name: "steamtradebot",
+            name: "SteamTradeBot",
             script: "./index.js",
             instances: 1,
-            max_memory_restart: "150M",
-            cron_restart: "0 4 * * *",
+            max_memory_restart: "500M",
+            //cron_restart: "0 4 * * *",
             // Logging
             out_file: "./out.log",
             error_file: "./error.log",
             merge_logs: true,
-            log_date_format: "DD-MM-YY HH:mm:ss Z",
+            log_date_format: "DD-MM-YY HH:mm:ss",
             log_type: "format",
             watch: false,
             ignore_watch: [
