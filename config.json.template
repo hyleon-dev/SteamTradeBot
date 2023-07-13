@@ -1,10 +1,13 @@
 {
-	"username": "",
-	"password": "",
-	"shared_secret": "",
-	"identity_secret": "",
-	"sale_market_fee_app_id": "",
-	"friend_ids": [
-		""
-	]
+  "username": "",
+  "password": "",
+  "shared_secret": "",
+  "identity_secret": "",
+  "sale_market_fee_app_id_give": "",
+  "sale_market_fee_app_id_get": [
+    ""
+  ],
+  "friend_ids": [
+    ""
+  ]
 }
