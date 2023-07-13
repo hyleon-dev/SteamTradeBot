@@ -29,22 +29,28 @@ const cardsGiven = IO.counter({
     id: 'app/stb/cards/given'
 })
 
-var friends = Array.from(config.friends);
+const logAuthPrefix = "****"
+const logTradeValidationStepsPrefix = "===="
+const logTradeValidationResultPrefix = "####"
+
+var friends = Array.from(config.friend_ids);
 var identitySecret = config.identity_secret;
 var saleMarketFeeAppId = config.sale_market_fee_app_id
+
+var loginDetails = {
+    accountName: config.username,
+    password: config.password,
+    logonID: Math.floor(Math.random() * 1000) + 1
+}
 
 // Disables asking for Steam Guard Code
 client.setOption("promptSteamGuardCode", false);
 
-client.logOn({
-    accountName: config.username,
-    password: config.password,
-    logonID: Math.floor(Math.random() * 1000) + 1
-});
+client.logOn(loginDetails);
 
 // Log in
 client.on('loggedOn', () => {
-    console.log('Logged into Steam!');
+    console.log(`${logAuthPrefix} Logged into Steam!`);
     client.setPersona(SteamUser.EPersonaState.Online);
 });
 
@@ -57,9 +63,9 @@ client.on("error", function (e) {
 // If last Steam Guard Code was wrong, here a new one is created
 client.on("steamGuard", function (domain, callback, lastCodeWrong) {
     if (lastCodeWrong) {
-        console.log("Last code wrong, try again!");
+        console.log(`${logAuthPrefix} Last code wrong, try again!`);
     } else {
-        console.log("Authorized with Steam Guard Code")
+        console.log(`${logAuthPrefix} Authorized with Steam Guard Code.`)
     }
     setTimeout(function () {
         callback(SteamTotp.generateAuthCode(config.shared_secret));
@@ -82,7 +88,7 @@ manager.on('newOffer', function (offer) {
         }
     })*/
 
-    console.log(`==== start of offer validation for ${offer.id} ====`)
+    console.log(`${logTradeValidationStepsPrefix} start of offer validation for ${offer.id}`)
 
     var offerFromFriend = friends.find(acc => acc === offer.partner.getSteamID64()) != null;
 
@@ -120,7 +126,7 @@ manager.on('newOffer', function (offer) {
 
             if (itemsToReceiveOfGameInTrade.length >> 0 && itemsToGiveOfGameInTrade.length >> 0) {
                 var count = 0;
-                while (count +1 <= itemsToReceiveOfGameInTrade.length && count +1 <= itemsToGiveOfGameInTrade.length) {
+                while (count + 1 <= itemsToReceiveOfGameInTrade.length && count + 1 <= itemsToGiveOfGameInTrade.length) {
                     itemsToGive.splice(itemsToGive.indexOf(itemsToGiveOfGameInTrade.at(count)), 1)
                     console.log(`Sorted card to give out: ${itemsToGiveOfGameInTrade.at(count).market_name}`)
                     itemsToGet.splice(itemsToGet.indexOf(itemsToReceiveOfGameInTrade.at(count)), 1) // us this for 1:1 trades
@@ -128,7 +134,7 @@ manager.on('newOffer', function (offer) {
                     count++;
                 }
                 console.log(`${count} cards each side sorted out because of 1:1 trades for ${itemToGive.type}.`)
-                console.log(`====`)
+                console.log(`${logTradeValidationStepsPrefix}`)
                 /*for (var j = 0; j < itemsToReceiveOfGameInTrade.length; j++) {
                     itemsToGet.splice(itemsToGet.indexOf(itemsToReceiveOfGameInTrade.at(j)), 1) // use this for 2:1 trades
                 }*/
@@ -155,7 +161,7 @@ manager.on('newOffer', function (offer) {
                         console.log(`Sorted card to receive out: ${itemsToReceiveOfGameInTrade.at(j).market_name} (${itemsToReceiveOfGameInTrade.at(j).type})`)
                     }
                     console.log(`${i} sale cards to give and ${j} sale cards to receive sorted out.`)
-                    console.log(`====`)
+                    console.log(`${logTradeValidationStepsPrefix}`)
                 }
             }
         })
@@ -195,25 +201,40 @@ manager.on('newOffer', function (offer) {
     }
 
     if (itemsToReceiveAreTradingCards && (itemsToGiveAreTradingCards || itemsToGive.length === 0) && ((crossSetItemCountValid || (offerFromFriend && crossSetItemCountValidFriends)) || itemsToGive.length === 0)) {
-        offer.accept((err, status) => {
-            if (err) {
-                console.log(err);
-            } else {
-                console.log(`Accepted offer ${offer.id}.`);
-                community.acceptConfirmationForObject(identitySecret, offer.id, (err, status) => {
-                    if (err) {
-                        console.log(err)
-                    } else {
-                        console.log(`Confirmed offer ${offer.id}.`);
-                        trades.inc();
-                        cardsGiven.inc(offer.itemsToGive.length);
-                        cardsReceived.inc(offer.itemsToReceive.length);
-                    }
-                });
-            }
-        });
+        acceptOffer(offer)
     } else {
-        console.log(`Can't validate offer ${offer.id}, please check manually`)
+        console.log(`${logTradeValidationResultPrefix} Can't validate offer ${offer.id}, please check manually`)
     }
-    console.log(`==== end of offer validation for ${offer.id} ====`)
+    console.log(`${logTradeValidationStepsPrefix} end of offer validation for ${offer.id}`)
 });
+
+function acceptOffer(offer) {
+    offer.accept((err, status) => {
+        if (err && err.message !== "Not Logged In") {
+            console.log(err);
+        } else if (err && err.message === "Not Logged In") {
+
+            console.log(`${logAuthPrefix} Session timed out. Re-login`)
+
+            // login if session is expired and error has been thrown
+            client.logOn(loginDetails);
+            setTimeout(() => {
+                acceptOffer(offer);
+            }, 40000);
+
+        } else {
+
+            console.log(`${logTradeValidationResultPrefix} Accepted offer ${offer.id}.`);
+            community.acceptConfirmationForObject(identitySecret, offer.id, (err, status) => {
+                if (err) {
+                    console.log(err)
+                } else {
+                    console.log(`${logTradeValidationResultPrefix} Confirmed offer ${offer.id}.`);
+                    trades.inc();
+                    cardsGiven.inc(offer.itemsToGive.length);
+                    cardsReceived.inc(offer.itemsToReceive.length);
+                }
+            });
+        }
+    });
+}
