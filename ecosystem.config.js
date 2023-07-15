@@ -9,7 +9,7 @@ module.exports = {
             // Logging
             out_file: "./out.log",
             error_file: "./error.log",
-            merge_logs: false,
+            merge_logs: true,
             log_date_format: "DD-MM-YY HH:mm:ss",
             log_type: "format",
             watch: false,
