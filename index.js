@@ -214,10 +214,16 @@ function acceptOffer(offer) {
             console.log(err);
         } else if (err && err.message === "Not Logged In") {
 
-            console.log(`${logAuthPrefix} Session timed out. Re-login`)
+            // if session is expired and error has been thrown
 
-            // login if session is expired and error has been thrown
+            console.log(`${logAuthPrefix} Session timed out. Re-login`)
+            // first log properly off
+            client.logOff()
+
+            // second login again
             client.logOn(loginDetails);
+
+            // wait for authentication (31 seconds for new auth code + 9 seconds buffer) and try again to accept offer
             setTimeout(() => {
                 acceptOffer(offer);
             }, 40000);
