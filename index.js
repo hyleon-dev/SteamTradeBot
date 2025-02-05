@@ -4,6 +4,8 @@ const SteamCommunity = require("steamcommunity");
 const TradeOfferManager = require('steam-tradeoffer-manager');
 const IO = require('@pm2/io')
 
+const config = require('./config.json');
+
 const client = new SteamUser();
 const community = new SteamCommunity();
 const manager = new TradeOfferManager({
@@ -12,43 +14,11 @@ const manager = new TradeOfferManager({
     "language": "en"
 });
 
-const config = require('./config.json');
-
-const trades = IO.counter({
-    name: 'Trades',
-    id: 'app/stb/trades'
-})
-
-const cardsReceived = IO.counter({
-    name: 'Cards Received',
-    id: 'app/stb/cards/received'
-})
-
-const cardsGiven = IO.counter({
-    name: 'Card Given',
-    id: 'app/stb/cards/given'
-})
-
-const logAuthPrefix = "****"
-const logTradeValidationStepsPrefix = "===="
-const logTradeValidationResultPrefix = "####"
-const logDebugPrefix = "[DEBUG]"
-
-const friends = Array.from(config.friend_ids);
-const identitySecret = config.identity_secret;
-const saleMarketFeeAppIdGive = Array.from(config.sale_market_fee_app_id_give);
-const saleMarketFeeAppIdGet = config.sale_market_fee_app_id_get;
-
 const loginDetails = {
     accountName: config.username,
     password: config.password,
     logonID: Math.floor(Math.random() * 1000) + 1
 };
-
-var itemsToGet
-var itemsToGive
-
-var saleCardsToGiveValid = true;
 
 // Disables asking for Steam Guard Code
 client.setOption("promptSteamGuardCode", false);
@@ -84,6 +54,36 @@ client.on('webSession', (sessionid, cookies) => {
     community.setCookies(cookies);
 });
 
+const trades = IO.counter({
+    name: 'Trades',
+    id: 'app/stb/trades'
+})
+
+const cardsReceived = IO.counter({
+    name: 'Cards Received',
+    id: 'app/stb/cards/received'
+})
+
+const cardsGiven = IO.counter({
+    name: 'Card Given',
+    id: 'app/stb/cards/given'
+})
+
+const logAuthPrefix = "****"
+const logTradeValidationStepsPrefix = "===="
+const logTradeValidationResultPrefix = "####"
+const logDebugPrefix = "[DEBUG]"
+
+const friends = Array.from(config.friend_ids);
+const identitySecret = config.identity_secret;
+const saleMarketFeeAppIdGive = Array.from(config.sale_market_fee_app_id_give);
+const saleMarketFeeAppIdGet = config.sale_market_fee_app_id_get;
+
+let itemsToReceive
+let itemsToGive
+
+let saleCardsToGiveValid = true;
+
 manager.on('newOffer', function (offer) {
 
     /*community.getNotifications((err, notifications) => {
@@ -99,11 +99,11 @@ manager.on('newOffer', function (offer) {
 
     let offerFromFriend = friends.find(acc => acc === offer.partner.getSteamID64()) != null;
 
-    itemsToGet = Array.from(offer.itemsToReceive);
+    itemsToReceive = Array.from(offer.itemsToReceive);
     itemsToGive = Array.from(offer.itemsToGive);
     saleCardsToGiveValid = true;
 
-    console.debug(`${logDebugPrefix} itemsToGet: (${itemsToGet.length}) ${itemsToText(itemsToGet)}`)
+    console.debug(`${logDebugPrefix} itemsToReceive: (${itemsToReceive.length}) ${itemsToText(itemsToReceive)}`)
     console.debug(`${logDebugPrefix} itemsToGive: (${itemsToGive.length}) ${itemsToText(itemsToGive)}`)
 
     // check if offer only contains trading cards
@@ -129,51 +129,103 @@ manager.on('newOffer', function (offer) {
 
     if (itemsToReceiveAreTradingCards && itemsToGiveAreTradingCards) {
 
-        // removes valid 1:1 same set same border items from check list
+        const itemsToGiveMap = new Map();
+        const itemsToReceiveMap = new Map();
+
+        // put items to give in Map
         itemsToGive.forEach(itemToGive => {
-            oneForOne(itemToGive, offer)
+            const appAndBorder = itemToGive.market_fee_app + "_" + itemToGive.tags.find(tag => tag.category === "cardborder").name;
+            if (itemsToGiveMap.has(appAndBorder)) {
+                itemsToGiveMap.get(appAndBorder).push(itemToGive);
+            } else {
+                itemsToGiveMap.set(appAndBorder, [itemToGive]);
+            }
         })
+
+        // put items to receive in Map
+        itemsToReceive.forEach(itemToReceive => {
+            const appAndBorder = itemToReceive.market_fee_app + "_" + itemToReceive.tags.find(tag => tag.category === "cardborder").name;
+            if (itemsToReceiveMap.has(appAndBorder)) {
+                itemsToReceiveMap.get(appAndBorder).push(itemToReceive);
+            } else {
+                itemsToReceiveMap.set(appAndBorder, [itemToReceive]);
+            }
+        });
+
+        // sorting out 1:1 trades
+        itemsToGiveMap.forEach((items, key) => {
+            if (itemsToReceiveMap.has(key) && items.length === itemsToReceiveMap.get(key).length) {
+                console.log(`${logTradeValidationStepsPrefix} found 1:1 trade for game ${key}`);
+                itemsToReceiveMap.delete(key);
+                itemsToGiveMap.delete(key);
+            } else if (itemsToReceiveMap.has(key) && items.length < itemsToReceiveMap.get(key).length) {
+                console.log(`${logTradeValidationStepsPrefix} found more items for game ${key} (${items.length} items to give and ${itemsToReceiveMap.get(key).length} items to receive)`);
+
+                // for every given item, one item to get is removed
+                for (let i = 1; i <= items.length; i++) {
+                    itemsToReceiveMap.get(key).pop();
+                }
+                itemsToGiveMap.delete(key);
+            }
+        })
+
+        itemsToGive = [];
+        itemsToGiveMap.forEach(items => {
+            items.forEach(item => {
+                itemsToGive.push(item);
+            })
+        });
+
+        itemsToReceive = [];
+        itemsToReceiveMap.forEach(items => {
+            items.forEach(item => {
+                itemsToReceive.push(item);
+            })
+        });
 
         // removes cards for special sale cards condition
         console.debug(`${logDebugPrefix} saleMarketFeeAppIdGet: ${saleMarketFeeAppIdGet}`)
-        if (saleMarketFeeAppIdGet !== undefined)
-            console.debug(`${logDebugPrefix} itemsToGet: (${itemsToGet.length}) ${itemsToText(itemsToGet)}`)
-        itemsToGet.forEach(item => {
-            console.debug(`${logDebugPrefix} item: ${item.market_name} (${item.type})`)
+        if (saleMarketFeeAppIdGet !== undefined && saleMarketFeeAppIdGet !== null && saleMarketFeeAppIdGet !== "") {
 
-            var itemIsSaleItem = item.market_fee_app === saleMarketFeeAppIdGet
-            console.debug(`${logDebugPrefix} itemIsSaleItem: ${itemIsSaleItem}`)
-            if (itemIsSaleItem) {
-                specialCardGet(item, offer);
-            }
-        })
+            console.debug(`${logDebugPrefix} itemsToReceive: (${itemsToReceive.length}) ${itemsToText(itemsToReceive)}`)
+            itemsToReceive.forEach(item => {
+                console.debug(`${logDebugPrefix} item: ${item.market_name} (${item.type})`)
 
-        console.debug(`${logDebugPrefix} saleMarketFeeAppIdGet: ${saleMarketFeeAppIdGive}`)
-        if (saleMarketFeeAppIdGive !== undefined)
-            console.debug(`${logDebugPrefix} itemsToGive: (${itemsToGive.length}) ${itemsToText(itemsToGive)}`)
-        itemsToGive.forEach(item => {
-            console.debug(`${logDebugPrefix} item: ${item}`)
+                const itemIsSaleItem = item.market_fee_app === saleMarketFeeAppIdGet
+                console.debug(`${logDebugPrefix} itemIsSaleItem: ${itemIsSaleItem}`)
+                if (itemIsSaleItem) {
+                    specialCardGet(item, offer);
+                }
+            })
 
-            var itemIsSaleItem = saleMarketFeeAppIdGive.filter(id => id === item.market_fee_app).length >> 0 && saleCardsToGiveValid
-            console.debug(`${logDebugPrefix} itemIsSaleItem: ${itemIsSaleItem}`)
-            if (itemIsSaleItem) {
-                specialCardGive(item, offer);
-            }
-        })
+            console.debug(`${logDebugPrefix} saleMarketFeeAppIdGive: ${saleMarketFeeAppIdGive}`)
+            if (saleMarketFeeAppIdGive !== undefined)
+                console.debug(`${logDebugPrefix} itemsToGive: (${itemsToGive.length}) ${itemsToText(itemsToGive)}`)
+            itemsToGive.forEach(item => {
+                console.debug(`${logDebugPrefix} item: ${item}`)
+
+                const itemIsSaleItem = saleMarketFeeAppIdGive.filter(id => id === item.market_fee_app).length >> 0 && saleCardsToGiveValid
+                console.debug(`${logDebugPrefix} itemIsSaleItem: ${itemIsSaleItem}`)
+                if (itemIsSaleItem) {
+                    specialCardGive(item, offer);
+                }
+            })
+        }
 
         //checks cross set cards: X of my cards for X*2 or more cards of the trade partner (2:4 = ok; 2:5 = ok; 2:3 = not ok)
-        var normalCardsToGive = itemsToGive.filter(item =>
+        const normalCardsToGive = itemsToGive.filter(item =>
             item.tags.find(tag => tag.category === "cardborder")
                 .internal_name === "cardborder_0").length;
 
-        var normalCardsToReceive = itemsToGet.filter(item =>
+        const normalCardsToReceive = itemsToReceive.filter(item =>
             item.tags.find(tag => tag.category === "cardborder")
                 .internal_name === "cardborder_0").length;
 
-        var foilCardsToGive = itemsToGive.filter(item =>
+        const foilCardsToGive = itemsToGive.filter(item =>
             item.tags.find(tag => tag.category === "cardborder")
                 .internal_name === "cardborder_1").length;
-        var foilCardsToReceive = itemsToGet.filter(item =>
+
+        const foilCardsToReceive = itemsToReceive.filter(item =>
             item.tags.find(tag => tag.category === "cardborder")
                 .internal_name === "cardborder_1").length
 
@@ -182,7 +234,7 @@ manager.on('newOffer', function (offer) {
             console.log(`Card to give left: ${item.market_name} (${item.type})`)
         })
 
-        itemsToGet.forEach(item => {
+        itemsToReceive.forEach(item => {
             console.log(`Card to receive left: ${item.market_name} (${item.type})`)
         })
 
@@ -198,7 +250,7 @@ manager.on('newOffer', function (offer) {
         console.debug(`${logDebugPrefix} crossSetItemCountValidFriends: ${crossSetItemCountValidFriends}`)
     }
 
-    var tradeAcceptCondition = itemsToReceiveAreTradingCards && (itemsToGiveAreTradingCards || itemsToGive.length === 0) && ((crossSetItemCountValid || (offerFromFriend && crossSetItemCountValidFriends)) || itemsToGive.length === 0) && saleCardsToGiveValid
+    const tradeAcceptCondition = itemsToReceiveAreTradingCards && (itemsToGiveAreTradingCards || itemsToGive.length === 0) && ((crossSetItemCountValid || (offerFromFriend && crossSetItemCountValidFriends)) || itemsToGive.length === 0) && saleCardsToGiveValid
     console.debug(`${logDebugPrefix} tradeAcceptCondition: ${tradeAcceptCondition}`)
     if (tradeAcceptCondition) {
         acceptOffer(offer)
@@ -245,49 +297,20 @@ function acceptOffer(offer) {
     });
 }
 
-function oneForOne(itemToGive, offer) {
-    let itemsToGiveOfGameInTrade = itemsToGive.filter(item =>
-        item.market_fee_app === itemToGive.market_fee_app
-        && item.tags.find(tag => tag.category === "cardborder").internal_name === itemToGive.tags.find(tag => tag.category === "cardborder").internal_name);
-    console.debug(`${logDebugPrefix} itemsToGiveOfGameInTrade: (${itemsToGiveOfGameInTrade.length}) ${itemsToText(itemsToGiveOfGameInTrade)}`)
-
-    let itemsToReceiveOfGameInTrade = offer.itemsToReceive.filter(item =>
-        item.market_fee_app === itemToGive.market_fee_app
-        && item.tags.find(tag => tag.category === "cardborder").internal_name === itemToGive.tags.find(tag => tag.category === "cardborder").internal_name);
-    console.debug(`${logDebugPrefix} itemsToReceiveOfGameInTrade: (${itemsToReceiveOfGameInTrade.length}) ${itemsToText(itemsToReceiveOfGameInTrade)}`)
-
-    if (itemsToReceiveOfGameInTrade.length >> 0 && itemsToGiveOfGameInTrade.length >> 0) {
-        var count = 0;
-        while (count + 1 <= itemsToReceiveOfGameInTrade.length && count + 1 <= itemsToGiveOfGameInTrade.length) {
-            itemsToGive.splice(itemsToGive.indexOf(itemsToGiveOfGameInTrade.at(count)), 1)
-            console.log(`Sorted card to give out: ${itemsToGiveOfGameInTrade.at(count).market_name}`)
-
-            itemsToGet.splice(itemsToGet.indexOf(itemsToReceiveOfGameInTrade.at(count)), 1) // us this for 1:1 trades
-            console.log(`Sorted card to receive out: ${itemsToReceiveOfGameInTrade.at(count).market_name}`)
-
-            count++;
-        }
-        console.log(`${count} cards each side sorted out because of 1:1 trades for ${itemToGive.type}.`)
-        console.log(`${logTradeValidationStepsPrefix}`)
-        /*for (var j = 0; j < itemsToReceiveOfGameInTrade.length; j++) {
-            itemsToGet.splice(itemsToGet.indexOf(itemsToReceiveOfGameInTrade.at(j)), 1) // use this for 2:1 trades
-        }*/
-    }
-}
-
 function specialCardGet(itemToGet, offer) {
+
     let itemsToGiveOfGameInTrade = itemsToGive.filter(item =>
         item.market_fee_app !== itemToGet.market_fee_app
         && item.tags.find(tag => tag.category === "cardborder").internal_name === itemToGet.tags.find(tag => tag.category === "cardborder").internal_name);
     console.debug(`${logDebugPrefix} itemsToGiveOfGameInTrade: (${itemsToGiveOfGameInTrade.length}) ${itemsToText(itemsToGiveOfGameInTrade)}`)
 
-    let itemsToReceiveOfGameInTrade = itemsToGet.filter(item =>
+    let itemsToReceiveOfGameInTrade = itemsToReceive.filter(item =>
         item.market_fee_app === itemToGet.market_fee_app
         && item.tags.find(tag => tag.category === "cardborder").internal_name === itemToGet.tags.find(tag => tag.category === "cardborder").internal_name);
     console.debug(`${logDebugPrefix} itemsToReceiveOfGameInTrade: (${itemsToReceiveOfGameInTrade.length}) ${itemsToText(itemsToReceiveOfGameInTrade)}`)
 
-    // get 1 special card, receive 2 non-special cards
-    var conditionsToGiveSpecialCard = (itemsToReceiveOfGameInTrade.length >= 1 && itemsToGiveOfGameInTrade.length >= 2) && itemsToGiveOfGameInTrade.length <= itemsToReceiveOfGameInTrade.length * 2;
+    // get 1 special card, give 2 non-special cards
+    const conditionsToGiveSpecialCard = (itemsToReceiveOfGameInTrade.length >= 1 && itemsToGiveOfGameInTrade.length >= 2) && itemsToGiveOfGameInTrade.length <= itemsToReceiveOfGameInTrade.length * 2;
     console.debug(`${logDebugPrefix} conditionsToGiveSpecialCard: ${conditionsToGiveSpecialCard}`)
     if (conditionsToGiveSpecialCard) {
         for (var i = 0; i < itemsToReceiveOfGameInTrade.length * 2; i++) {
@@ -295,7 +318,7 @@ function specialCardGet(itemToGet, offer) {
             console.log(`Sorted card to give out: ${itemsToGiveOfGameInTrade.at(i).market_name} (${itemsToGiveOfGameInTrade.at(i).type})`)
         }
         for (var j = 0; j < itemsToReceiveOfGameInTrade.length; j++) {
-            itemsToGet.splice(itemsToGet.indexOf(itemsToReceiveOfGameInTrade.at(j)), 1)
+            itemsToReceive.splice(itemsToReceive.indexOf(itemsToReceiveOfGameInTrade.at(j)), 1)
             console.log(`Sorted card to receive out: ${itemsToReceiveOfGameInTrade.at(j).market_name} (${itemsToReceiveOfGameInTrade.at(j).type})`)
         }
         console.log(`${i} sale cards to give and ${j} sale cards to receive sorted out.`)
@@ -304,18 +327,19 @@ function specialCardGet(itemToGet, offer) {
 }
 
 function specialCardGive(itemToGive, offer) {
+
     let itemsToGiveOfGameInTrade = itemsToGive.filter(item =>
         item.market_fee_app === itemToGive.market_fee_app
         && item.tags.find(tag => tag.category === "cardborder").internal_name === itemToGive.tags.find(tag => tag.category === "cardborder").internal_name);
     console.debug(`${logDebugPrefix} itemsToGiveOfGameInTrade: (${itemsToGiveOfGameInTrade.length}) ${itemsToText(itemsToGiveOfGameInTrade)}`)
 
-    let itemsToReceiveOfGameInTrade = itemsToGet.filter(item =>
+    let itemsToReceiveOfGameInTrade = itemsToReceive.filter(item =>
         item.market_fee_app !== itemToGive.market_fee_app
         && item.tags.find(tag => tag.category === "cardborder").internal_name === itemToGive.tags.find(tag => tag.category === "cardborder").internal_name);
     console.debug(`${logDebugPrefix} itemsToReceiveOfGameInTrade: (${itemsToReceiveOfGameInTrade.length}) ${itemsToText(itemsToReceiveOfGameInTrade)}`)
 
     // give 1 special card, receive 3 non-special cards
-    var conditionsToGiveSpecialCard = (itemsToReceiveOfGameInTrade.length >= 3 && itemsToGiveOfGameInTrade.length >= 1) && itemsToGiveOfGameInTrade.length * 3 <= itemsToReceiveOfGameInTrade.length;
+    const conditionsToGiveSpecialCard = (itemsToReceiveOfGameInTrade.length >= 3 && itemsToGiveOfGameInTrade.length >= 1) && itemsToGiveOfGameInTrade.length * 3 <= itemsToReceiveOfGameInTrade.length;
     console.debug(`${logDebugPrefix} conditionsToGiveSpecialCard: ${conditionsToGiveSpecialCard}`)
     if (conditionsToGiveSpecialCard) {
         for (var i = 0; i < itemsToGiveOfGameInTrade.length; i++) {
@@ -323,7 +347,7 @@ function specialCardGive(itemToGive, offer) {
             console.log(`Sorted card to give out: ${itemsToGiveOfGameInTrade.at(i).market_name} (${itemsToGiveOfGameInTrade.at(i).type})`)
         }
         for (var j = 0; j < itemsToGiveOfGameInTrade.length * 3; j++) {
-            itemsToGet.splice(itemsToGet.indexOf(itemsToReceiveOfGameInTrade.at(j)), 1)
+            itemsToReceive.splice(itemsToReceive.indexOf(itemsToReceiveOfGameInTrade.at(j)), 1)
             console.log(`Sorted card to receive out: ${itemsToReceiveOfGameInTrade.at(j).market_name} (${itemsToReceiveOfGameInTrade.at(j).type})`)
         }
         console.log(`${i} sale cards to give and ${j} sale cards to receive sorted out.`)
