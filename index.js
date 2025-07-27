@@ -22,27 +22,32 @@ const loginDetails = {
 
 const metricsReconnects = IO.counter({
     name: 'Reconnects',
-    id: 'app/stb/reconnects'
+    id: 'app/stb/reconnects',
+    value: 0
 });
 
 const metricsErrors = IO.counter({
     name: 'Errors',
-    id: 'app/stb/errors'
+    id: 'app/stb/errors',
+    value: 0
 });
 
 const trades = IO.counter({
     name: 'Trades',
-    id: 'app/stb/trades'
+    id: 'app/stb/trades',
+    value: 0
 })
 
 const cardsReceived = IO.counter({
     name: 'Cards Received',
-    id: 'app/stb/cards/received'
+    id: 'app/stb/cards/received',
+    value: 0
 })
 
 const cardsGiven = IO.counter({
     name: 'Card Given',
-    id: 'app/stb/cards/given'
+    id: 'app/stb/cards/given',
+    value: 0
 })
 
 const logAuthPrefix = "****"
