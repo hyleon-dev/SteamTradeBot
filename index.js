@@ -20,6 +20,16 @@ const loginDetails = {
     logonID: Math.floor(Math.random() * 1000) + 1
 };
 
+const metricsReconnects = IO.counter({
+    name: 'Reconnects',
+    id: 'app/stb/reconnects'
+});
+
+const metricsErrors = IO.counter({
+    name: 'Errors',
+    id: 'app/stb/errors'
+});
+
 // Disables asking for Steam Guard Code
 client.setOption("promptSteamGuardCode", false);
 
@@ -31,11 +41,27 @@ client.on('loggedOn', () => {
     client.setPersona(SteamUser.EPersonaState.Online);
 });
 
-// If some error occured during log in. Closes the process
 client.on("error", function (e) {
-    console.log(e);
-    process.exit(1);
+    console.log(`${logAuthPrefix} Fehler aufgetreten: ${e}`);
+    metricsErrors.inc(); // Fehler zählen
+
+    // Nur bei kritischen Fehlern beenden
+    if (e.message.includes("Invalid Password") || e.message.includes("Invalid Auth Code")) {
+        process.exit(1);
+    }
+    // Bei anderen Fehlern Reconnect versuchen
+    setTimeout(() => {
+        metricsReconnects.inc(); // Reconnect-Versuche zählen
+        client.logOn(loginDetails);
+    }, 60000); // 1 Minute warten
 });
+
+setInterval(() => {
+    if (!client.connected) {
+        console.log("Verbindung verloren - versuche Reconnect");
+        client.logOn(loginDetails);
+    }
+}, 300000); // Alle 5 Minuten
 
 // If last Steam Guard Code was wrong, here a new one is created
 client.on("steamGuard", function (domain, callback, lastCodeWrong) {
@@ -83,6 +109,12 @@ let itemsToReceive
 let itemsToGive
 
 let saleCardsToGiveValid = true;
+
+// Arrays nach Verarbeitung leeren
+function cleanupTradeData() {
+    itemsToReceive = [];
+    itemsToGive = [];
+}
 
 manager.on('newOffer', function (offer) {
 
@@ -258,6 +290,7 @@ manager.on('newOffer', function (offer) {
         console.log(`${logTradeValidationResultPrefix} Can't validate offer ${offer.id}, please check manually`)
     }
     console.log(`${logTradeValidationStepsPrefix} end of offer validation for ${offer.id}`)
+    cleanupTradeData();
 });
 
 function acceptOffer(offer) {
@@ -265,13 +298,12 @@ function acceptOffer(offer) {
         if (err && err.message !== "Not Logged In") {
             console.log(err);
         } else if (err && err.message === "Not Logged In") {
-
             // if session is expired and error has been thrown
+            metricsReconnects.inc(); // Reconnect nach Session-Timeout zählen
 
             console.log(`${logAuthPrefix} Session timed out. Re-login`)
             // first log properly off
             client.logOff()
-
             // second login again
             client.logOn(loginDetails);
 
