@@ -30,6 +30,38 @@ const metricsErrors = IO.counter({
     id: 'app/stb/errors'
 });
 
+const trades = IO.counter({
+    name: 'Trades',
+    id: 'app/stb/trades'
+})
+
+const cardsReceived = IO.counter({
+    name: 'Cards Received',
+    id: 'app/stb/cards/received'
+})
+
+const cardsGiven = IO.counter({
+    name: 'Card Given',
+    id: 'app/stb/cards/given'
+})
+
+const logAuthPrefix = "****"
+const logTradeValidationStepsPrefix = "===="
+const logTradeValidationResultPrefix = "####"
+const logDebugPrefix = "[DEBUG]"
+
+const friends = Array.from(config.friend_ids);
+const identitySecret = config.identity_secret;
+const saleMarketFeeAppIdGive = Array.from(config.sale_market_fee_app_id_give);
+const saleMarketFeeAppIdGet = config.sale_market_fee_app_id_get;
+
+let wasConnected = false;
+
+let itemsToReceive
+let itemsToGive
+
+let saleCardsToGiveValid = true;
+
 // Disables asking for Steam Guard Code
 client.setOption("promptSteamGuardCode", false);
 
@@ -56,12 +88,12 @@ client.on("error", function (e) {
     }, 60000); // 1 Minute warten
 });
 
-setInterval(() => {
+/*setInterval(() => {
     if (!client.connected) {
         console.log("Verbindung verloren - versuche Reconnect");
         client.logOn(loginDetails);
     }
-}, 300000); // Alle 5 Minuten
+}, 300000); // Alle 5 Minuten*/
 
 // If last Steam Guard Code was wrong, here a new one is created
 client.on("steamGuard", function (domain, callback, lastCodeWrong) {
@@ -80,35 +112,23 @@ client.on('webSession', (sessionid, cookies) => {
     community.setCookies(cookies);
 });
 
-const trades = IO.counter({
-    name: 'Trades',
-    id: 'app/stb/trades'
-})
+client.on('connected', () => {
+    wasConnected = true;
+    console.log(`${logAuthPrefix} Verbindung hergestellt`);
 
-const cardsReceived = IO.counter({
-    name: 'Cards Received',
-    id: 'app/stb/cards/received'
-})
+});
 
-const cardsGiven = IO.counter({
-    name: 'Card Given',
-    id: 'app/stb/cards/given'
-})
-
-const logAuthPrefix = "****"
-const logTradeValidationStepsPrefix = "===="
-const logTradeValidationResultPrefix = "####"
-const logDebugPrefix = "[DEBUG]"
-
-const friends = Array.from(config.friend_ids);
-const identitySecret = config.identity_secret;
-const saleMarketFeeAppIdGive = Array.from(config.sale_market_fee_app_id_give);
-const saleMarketFeeAppIdGet = config.sale_market_fee_app_id_get;
-
-let itemsToReceive
-let itemsToGive
-
-let saleCardsToGiveValid = true;
+client.on('disconnected', () => {
+    if (wasConnected) {
+        console.log(`${logAuthPrefix} Verbindung verloren - versuche Reconnect`);
+        // Kurz warten und dann neu anmelden
+        setTimeout(() => {
+            metricsReconnects.inc();
+            client.logOn(loginDetails);
+        }, 5000); // 5 Sekunden warten
+    }
+    wasConnected = false;
+});
 
 // Arrays nach Verarbeitung leeren
 function cleanupTradeData() {
