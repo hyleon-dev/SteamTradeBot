@@ -61,6 +61,7 @@ let itemsToReceive
 let itemsToGive
 
 let saleCardsToGiveValid = true;
+let includesBlacklisted = false;
 
 // Disables asking for Steam Guard Code
 client.setOption("promptSteamGuardCode", false);
@@ -174,27 +175,27 @@ manager.on('newOffer', function (offer) {
 
     // put items to give in Map
     itemsToGive.forEach(itemToGive => {
-        if (!blacklisted.give.includes(itemToGive.market_fee_app)) {
-            const appAndBorder = itemToGive.market_fee_app + "_" + itemToGive.tags.find(tag => tag.category === "cardborder").name;
-            if (itemsToGiveMap.has(appAndBorder)) {
-                itemsToGiveMap.get(appAndBorder).push(itemToGive);
-            } else {
-                itemsToGiveMap.set(appAndBorder, [itemToGive]);
-            }
+        if (blacklisted.give.includes(itemToGive.market_fee_app)) includesBlacklisted = true; // this solutions is to keep 'includesBlacklisted' on true
+        const appAndBorder = itemToGive.market_fee_app + "_" + itemToGive.tags.find(tag => tag.category === "cardborder").name;
+        if (itemsToGiveMap.has(appAndBorder)) {
+            itemsToGiveMap.get(appAndBorder).push(itemToGive);
+        } else {
+            itemsToGiveMap.set(appAndBorder, [itemToGive]);
         }
     })
 
     // put items to receive in Map
     itemsToReceive.forEach(itemToReceive => {
-        if (!blacklisted.give.includes(itemToReceive.market_fee_app)) {
-            const appAndBorder = itemToReceive.market_fee_app + "_" + itemToReceive.tags.find(tag => tag.category === "cardborder").name;
-            if (itemsToReceiveMap.has(appAndBorder)) {
-                itemsToReceiveMap.get(appAndBorder).push(itemToReceive);
-            } else {
-                itemsToReceiveMap.set(appAndBorder, [itemToReceive]);
-            }
+        if (blacklisted.give.includes(itemToReceive.market_fee_app)) includesBlacklisted = true; // this solutions is to keep 'includesBlacklisted' on true
+        const appAndBorder = itemToReceive.market_fee_app + "_" + itemToReceive.tags.find(tag => tag.category === "cardborder").name;
+        if (itemsToReceiveMap.has(appAndBorder)) {
+            itemsToReceiveMap.get(appAndBorder).push(itemToReceive);
+        } else {
+            itemsToReceiveMap.set(appAndBorder, [itemToReceive]);
         }
     });
+
+    console.log(`${logTradeValidationStepsPrefix} Trade includes blacklisted games: ${includesBlacklisted}`)
 
     // sorting out 1:1 trades
     itemsToGiveMap.forEach((items, key) => {
@@ -286,7 +287,7 @@ manager.on('newOffer', function (offer) {
         && (foilCardsToGive !== undefined && foilCardsToGive * 2 <= foilCardsToReceive);
     console.debug(`${logDebugPrefix} crossSetItemCountValid: ${crossSetItemCountValid}`)
 
-    const tradeAcceptCondition = itemsToReceiveAreTradingCards && (itemsToGiveAreTradingCards || itemsToGive.length === 0) && (crossSetItemCountValid || itemsToGive.length === 0) && saleCardsToGiveValid;
+    const tradeAcceptCondition = itemsToReceiveAreTradingCards && (itemsToGiveAreTradingCards || itemsToGive.length === 0) && (crossSetItemCountValid || itemsToGive.length === 0) && saleCardsToGiveValid && !includesBlacklisted;
     console.debug(`${logDebugPrefix} tradeAcceptCondition: ${tradeAcceptCondition}`)
     if (tradeAcceptCondition) {
         acceptOffer(offer)
