@@ -175,27 +175,33 @@ manager.on('newOffer', function (offer) {
 
     // put items to give in Map
     itemsToGive.forEach(itemToGive => {
-        if (blacklisted.give.includes(itemToGive.market_fee_app)) includesBlacklisted = true; // this solutions is to keep 'includesBlacklisted' on true
-        const appAndBorder = itemToGive.market_fee_app + "_" + itemToGive.tags.find(tag => tag.category === "cardborder").name;
-        if (itemsToGiveMap.has(appAndBorder)) {
-            itemsToGiveMap.get(appAndBorder).push(itemToGive);
+        if (!blacklisted.give.includes(itemToGive.market_fee_app)) {
+            const appAndBorder = itemToGive.market_fee_app + "_" + itemToGive.tags.find(tag => tag.category === "cardborder").name;
+            if (itemsToGiveMap.has(appAndBorder)) {
+                itemsToGiveMap.get(appAndBorder).push(itemToGive);
+            } else {
+                itemsToGiveMap.set(appAndBorder, [itemToGive]);
+            }
         } else {
-            itemsToGiveMap.set(appAndBorder, [itemToGive]);
+            includesBlacklisted = true;
         }
     })
 
     // put items to receive in Map
     itemsToReceive.forEach(itemToReceive => {
-        if (blacklisted.give.includes(itemToReceive.market_fee_app)) includesBlacklisted = true; // this solutions is to keep 'includesBlacklisted' on true
-        const appAndBorder = itemToReceive.market_fee_app + "_" + itemToReceive.tags.find(tag => tag.category === "cardborder").name;
-        if (itemsToReceiveMap.has(appAndBorder)) {
-            itemsToReceiveMap.get(appAndBorder).push(itemToReceive);
+        if (!blacklisted.give.includes(itemToReceive.market_fee_app)) {
+            const appAndBorder = itemToReceive.market_fee_app + "_" + itemToReceive.tags.find(tag => tag.category === "cardborder").name;
+            if (itemsToReceiveMap.has(appAndBorder)) {
+                itemsToReceiveMap.get(appAndBorder).push(itemToReceive);
+            } else {
+                itemsToReceiveMap.set(appAndBorder, [itemToReceive]);
+            }
         } else {
-            itemsToReceiveMap.set(appAndBorder, [itemToReceive]);
+            includesBlacklisted = true;
         }
     });
 
-    console.log(`${logTradeValidationStepsPrefix} Trade includes blacklisted games: ${includesBlacklisted}`)
+    console.debug(`${logDebugPrefix} includesBlacklisted: ${includesBlacklisted}`)
 
     // sorting out 1:1 trades
     itemsToGiveMap.forEach((items, key) => {
