@@ -236,29 +236,30 @@ manager.on('newOffer', function (offer) {
 
     // removes cards for special sale cards condition
     console.debug(`${logDebugPrefix} saleMarketFeeAppIdGet: ${saleMarketFeeAppIdGet}`)
-    if (saleMarketFeeAppIdGet === undefined || saleMarketFeeAppIdGet === null || saleMarketFeeAppIdGet === "") return;
+    if (saleMarketFeeAppIdGet !== undefined && saleMarketFeeAppIdGet !== null && saleMarketFeeAppIdGet !== "") {
 
-    console.debug(`${logDebugPrefix} itemsToReceive: (${itemsToReceive.length}) ${itemsToText(itemsToReceive)}`)
-    itemsToReceive.forEach(item => {
-        console.debug(`${logDebugPrefix} item: ${item.market_name} (${item.type})`)
+        console.debug(`${logDebugPrefix} itemsToReceive: (${itemsToReceive.length}) ${itemsToText(itemsToReceive)}`)
+        itemsToReceive.forEach(item => {
+            console.debug(`${logDebugPrefix} item: ${item.market_name} (${item.type})`)
 
-        const itemIsSaleItem = item.market_fee_app === saleMarketFeeAppIdGet
-        console.debug(`${logDebugPrefix} itemIsSaleItem: ${itemIsSaleItem}`)
-        if (itemIsSaleItem) {
-            specialCardGet(item, offer);
-        }
-    })
+            const itemIsSaleItem = item.market_fee_app === saleMarketFeeAppIdGet
+            console.debug(`${logDebugPrefix} itemIsSaleItem: ${itemIsSaleItem}`)
+            if (itemIsSaleItem) {
+                specialCardGet(item, offer);
+            }
+        })
 
-    console.debug(`${logDebugPrefix} saleMarketFeeAppIdGive: ${saleMarketFeeAppIdGive}`)
-    itemsToGive.forEach(item => {
-        console.debug(`${logDebugPrefix} item: ${item}`)
+        console.debug(`${logDebugPrefix} saleMarketFeeAppIdGive: ${saleMarketFeeAppIdGive}`)
+        itemsToGive.forEach(item => {
+            console.debug(`${logDebugPrefix} item: ${item}`)
 
-        const itemIsSaleItem = saleMarketFeeAppIdGive.filter(id => id === item.market_fee_app).length >> 0 && saleCardsToGiveValid
-        console.debug(`${logDebugPrefix} itemIsSaleItem: ${itemIsSaleItem}`)
-        if (itemIsSaleItem) {
-            specialCardGive(item, offer);
-        }
-    })
+            const itemIsSaleItem = saleMarketFeeAppIdGive.filter(id => id === item.market_fee_app).length >> 0 && saleCardsToGiveValid
+            console.debug(`${logDebugPrefix} itemIsSaleItem: ${itemIsSaleItem}`)
+            if (itemIsSaleItem) {
+                specialCardGive(item, offer);
+            }
+        })
+    }
 
     //checks cross set cards: X of my cards for X*2 or more cards of the trade partner (2:4 = ok; 2:5 = ok; 2:3 = not ok)
     const normalCardsToGive = itemsToGive.filter(item =>
