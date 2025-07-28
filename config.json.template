@@ -7,7 +7,10 @@
   "sale_market_fee_app_id_get": [
     ""
   ],
-  "friend_ids": [
+  "do_not_give": [
+    ""
+  ],
+  "do_not_get": [
     ""
   ]
 }
