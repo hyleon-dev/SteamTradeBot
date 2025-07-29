@@ -184,12 +184,13 @@ manager.on('newOffer', function (offer) {
             }
         } else {
             includesBlacklisted = true;
+            console.log(`${logTradeValidationStepsPrefix} Blacklisted game to give found: ${itemToGive.market_fee_app}`);
         }
     })
 
     // put items to receive in Map
     itemsToReceive.forEach(itemToReceive => {
-        if (!blacklisted.give.includes(itemToReceive.market_fee_app)) {
+        if (!blacklisted.get.includes(itemToReceive.market_fee_app)) {
             const appAndBorder = itemToReceive.market_fee_app + "_" + itemToReceive.tags.find(tag => tag.category === "cardborder").name;
             if (itemsToReceiveMap.has(appAndBorder)) {
                 itemsToReceiveMap.get(appAndBorder).push(itemToReceive);
@@ -198,6 +199,7 @@ manager.on('newOffer', function (offer) {
             }
         } else {
             includesBlacklisted = true;
+            console.log(`${logTradeValidationStepsPrefix} Blacklisted game to get found: ${itemToReceive.market_fee_app}`);
         }
     });
 
