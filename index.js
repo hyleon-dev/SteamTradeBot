@@ -135,6 +135,8 @@ client.on('disconnected', () => {
 function cleanupTradeData() {
     itemsToReceive = [];
     itemsToGive = [];
+    includesBlacklisted = false;
+    saleCardsToGiveValid = true;
 }
 
 manager.on('newOffer', function (offer) {
