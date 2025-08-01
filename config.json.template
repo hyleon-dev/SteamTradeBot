@@ -7,10 +7,16 @@
   "sale_market_fee_app_id_get": [
     ""
   ],
-  "do_not_give": [
-    ""
-  ],
-  "do_not_get": [
-    ""
-  ]
+  "do_not_give_hard": [
+      ""
+    ],
+    "do_not_get_hard": [
+      ""
+    ],
+    "do_not_give_soft": [
+      ""
+    ],
+    "do_not_get_soft": [
+      ""
+    ]
 }

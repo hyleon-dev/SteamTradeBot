@@ -53,7 +53,8 @@ const logDebugPrefix = "[DEBUG]"
 const identitySecret = config.identity_secret;
 const saleMarketFeeAppIdGive = Array.from(config.sale_market_fee_app_id_give).flatMap(id => String(id));
 const saleMarketFeeAppIdGet = config.sale_market_fee_app_id_get;
-const blacklisted = { get: any = Array.from(config.do_not_get).flatMap(id => String(id)), give: any = Array.from(config.do_not_give).flatMap(id => String(id)) };
+const hardBlacklist = { get: any = Array.from(config.do_not_get_hard).flatMap(id => String(id)), give: any = Array.from(config.do_not_give_hard).flatMap(id => String(id)) };
+const softBlacklist = { get: any = Array.from(config.do_not_get_soft).flatMap(id => String(id)), give: any = Array.from(config.do_not_give_soft).flatMap(id => String(id)) };
 
 let wasConnected = false;
 
@@ -61,7 +62,8 @@ let itemsToReceive
 let itemsToGive
 
 let saleCardsToGiveValid = true;
-let includesBlacklisted = false;
+let includesHardBlacklisted = false;
+let includesSoftBlacklisted = false;
 
 // Disables asking for Steam Guard Code
 client.setOption("promptSteamGuardCode", false);
@@ -135,7 +137,8 @@ client.on('disconnected', () => {
 function cleanupTradeData() {
     itemsToReceive = [];
     itemsToGive = [];
-    includesBlacklisted = false;
+    includesHardBlacklisted = false;
+    includesSoftBlacklisted = false;
     saleCardsToGiveValid = true;
 }
 
@@ -176,8 +179,9 @@ manager.on('newOffer', function (offer) {
     const itemsToReceiveMap = new Map();
 
     // put items to give in Map
+    // hard blacklisting: every trade with these games will not be accepted automatically
     itemsToGive.forEach(itemToGive => {
-        if (!blacklisted.give.includes(itemToGive.market_fee_app)) {
+        if (!hardBlacklist.give.includes(itemToGive.market_fee_app)) {
             const appAndBorder = itemToGive.market_fee_app + "_" + itemToGive.tags.find(tag => tag.category === "cardborder").name;
             if (itemsToGiveMap.has(appAndBorder)) {
                 itemsToGiveMap.get(appAndBorder).push(itemToGive);
@@ -185,14 +189,14 @@ manager.on('newOffer', function (offer) {
                 itemsToGiveMap.set(appAndBorder, [itemToGive]);
             }
         } else {
-            includesBlacklisted = true;
-            console.log(`${logTradeValidationStepsPrefix} Blacklisted game to give found: ${itemToGive.market_fee_app}`);
+            includesHardBlacklisted = true;
+            console.log(`${logTradeValidationStepsPrefix} Hard Blacklisted game to give found: ${itemToGive.market_fee_app}`);
         }
     })
 
     // put items to receive in Map
     itemsToReceive.forEach(itemToReceive => {
-        if (!blacklisted.get.includes(itemToReceive.market_fee_app)) {
+        if (!hardBlacklist.get.includes(itemToReceive.market_fee_app)) {
             const appAndBorder = itemToReceive.market_fee_app + "_" + itemToReceive.tags.find(tag => tag.category === "cardborder").name;
             if (itemsToReceiveMap.has(appAndBorder)) {
                 itemsToReceiveMap.get(appAndBorder).push(itemToReceive);
@@ -200,12 +204,12 @@ manager.on('newOffer', function (offer) {
                 itemsToReceiveMap.set(appAndBorder, [itemToReceive]);
             }
         } else {
-            includesBlacklisted = true;
-            console.log(`${logTradeValidationStepsPrefix} Blacklisted game to get found: ${itemToReceive.market_fee_app}`);
+            includesHardBlacklisted = true;
+            console.log(`${logTradeValidationStepsPrefix} Hard Blacklisted game to get found: ${itemToReceive.market_fee_app}`);
         }
     });
 
-    console.debug(`${logDebugPrefix} includesBlacklisted: ${includesBlacklisted}`)
+    console.debug(`${logDebugPrefix} includesHardBlacklisted: ${includesHardBlacklisted}`)
 
     // sorting out 1:1 trades
     itemsToGiveMap.forEach((items, key) => {
@@ -224,19 +228,32 @@ manager.on('newOffer', function (offer) {
         }
     })
 
+    // soft blacklisting: X:X trading is accepted automatically, X:(X*2) trading is not
     itemsToGive = [];
     itemsToGiveMap.forEach(items => {
-        items.forEach(item => {
-            itemsToGive.push(item);
-        })
+            items.forEach(item => {
+                if (!softBlacklist.give.includes(item.market_fee_app)) {
+                itemsToGive.push(item);
+                } else {
+                    includesSoftBlacklisted = true;
+                    console.log(`${logTradeValidationStepsPrefix} Soft Blacklisted game to give found: ${item.market_fee_app}`);
+                }
+            });
     });
 
     itemsToReceive = [];
     itemsToReceiveMap.forEach(items => {
         items.forEach(item => {
-            itemsToReceive.push(item);
-        })
+            if (!softBlacklist.get.includes(item.market_fee_app)) {
+                itemsToReceive.push(item);
+            } else {
+                includesSoftBlacklisted = true;
+                console.log(`${logTradeValidationStepsPrefix} Soft Blacklisted game to get found: ${item.market_fee_app}`);
+            }
+        });
     });
+
+    console.debug(`${logDebugPrefix} includesSoftBlacklisted: ${includesSoftBlacklisted}`)
 
     // removes cards for special sale cards condition
     console.debug(`${logDebugPrefix} saleMarketFeeAppIdGet: ${saleMarketFeeAppIdGet}`)
@@ -298,7 +315,7 @@ manager.on('newOffer', function (offer) {
         && (foilCardsToGive !== undefined && foilCardsToGive * 2 <= foilCardsToReceive);
     console.debug(`${logDebugPrefix} crossSetItemCountValid: ${crossSetItemCountValid}`)
 
-    const tradeAcceptCondition = itemsToReceiveAreTradingCards && (itemsToGiveAreTradingCards || itemsToGive.length === 0) && (crossSetItemCountValid || itemsToGive.length === 0) && saleCardsToGiveValid && !includesBlacklisted;
+    const tradeAcceptCondition = itemsToReceiveAreTradingCards && (itemsToGiveAreTradingCards || itemsToGive.length === 0) && (crossSetItemCountValid || itemsToGive.length === 0) && saleCardsToGiveValid && !includesHardBlacklisted && !includesSoftBlacklisted;
     console.debug(`${logDebugPrefix} tradeAcceptCondition: ${tradeAcceptCondition}`)
     if (tradeAcceptCondition) {
         acceptOffer(offer)
