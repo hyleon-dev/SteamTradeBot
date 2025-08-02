@@ -147,10 +147,12 @@ function cleanupTradeData() {
     discordMessageBuilder = [];
 }
 
-manager.on('newOffer', function (offer) {
+manager.on('newOffer', async function (offer) {
 
-    console.log(`${logTradeValidationStepsPrefix} start of offer validation for ${offer.id} from ${offer.partner.accountid}`)
-    discordMessageBuilder.push(`🆕 Offer from ${offer.partner.accountid} with ID ${offer.id} received.`);
+    let tradePartner = await loadTradePartner(offer.partner.accountid);
+
+    console.log(`${logTradeValidationStepsPrefix} start of offer validation for ${offer.id} from ${tradePartner.personaname} (${offer.partner.accountid})`)
+    discordMessageBuilder.push(`🆕 Offer from ${tradePartner.personaname} received.`);
     discordMessageBuilder.push('\n')
 
     itemsToReceive = Array.from(offer.itemsToReceive);
@@ -212,7 +214,7 @@ manager.on('newOffer', function (offer) {
     });
 
     console.debug(`${logDebugPrefix} includesHardBlacklisted: ${includesHardBlacklisted}`)
-    discordMessageBuilder.push('🔄️ Following trades will be made:')
+    discordMessageBuilder.push('↔️ Following trades will be made:')
 
     // sorting out 1:1 trades
     itemsToGiveMap.forEach((items, key) => {
@@ -329,8 +331,10 @@ manager.on('newOffer', function (offer) {
         && (foilCardsToGive !== undefined && foilCardsToGive * 2 <= foilCardsToReceive);
     console.debug(`${logDebugPrefix} crossSetItemCountValid: ${crossSetItemCountValid}`);
 
-    for (let i = 0; i < itemsToGive.length; i++) {
-        discordMessageBuilder.push(`⬅️ ${itemsToGive[i].name} (${itemsToGive[i].type.replaceAll(" Trading Card", "")}) \n➡️ ${itemsToReceive[(i * 2)].name} (${itemsToReceive[(i * 2)].type.replaceAll(" Trading Card", "")}) \n➡️ ${itemsToReceive[(i * 2) + 1].name} (${itemsToReceive[(i * 2) + 1].type.replaceAll(" Trading Card", "")}) \n`);
+    if (crossSetItemCountValid) {
+        for (let i = 0; i < itemsToGive.length; i++) {
+            discordMessageBuilder.push(`⬅️ ${itemsToGive[i].name} (${itemsToGive[i].type.replaceAll(" Trading Card", "")}) \n➡️ ${itemsToReceive[(i * 2)].name} (${itemsToReceive[(i * 2)].type.replaceAll(" Trading Card", "")}) \n➡️ ${itemsToReceive[(i * 2) + 1].name} (${itemsToReceive[(i * 2) + 1].type.replaceAll(" Trading Card", "")}) \n`);
+        }
     }
 
     const tradeAcceptCondition = itemsToReceiveAreTradingCards && (itemsToGiveAreTradingCards || itemsToGive.length === 0) && (crossSetItemCountValid || itemsToGive.length === 0) && saleCardsToGiveValid && !includesHardBlacklisted && !includesSoftBlacklisted;
@@ -456,4 +460,11 @@ function itemsToText(items) {
 function sendDiscordMessage(message) {
     const channel = discordClient.channels.cache.get(config.discord_channel_id);
     channel.send(message);
+}
+
+async function loadTradePartner(partnerAccountId) {
+    const steamId = (BigInt(partnerAccountId) + 76561197960265728n).toString();
+    return (await (await fetch(`https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=${config.steam_api_key}&steamids=${steamId}`)).json())
+        .response
+        .players[0];
 }

@@ -3,6 +3,7 @@
   "steam_password": "",
   "steam_shared_secret": "",
   "steam_identity_secret": "",
+  "steam_api_key": "",
   "discord_toke": "",
   "discord_channel_id": "",
   "sale_market_fee_app_id_give": "",
