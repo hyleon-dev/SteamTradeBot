@@ -2,21 +2,26 @@ const SteamUser = require('steam-user');
 const SteamTotp = require('steam-totp');
 const SteamCommunity = require("steamcommunity");
 const TradeOfferManager = require('steam-tradeoffer-manager');
-const IO = require('@pm2/io')
-
+const IO = require('@pm2/io');
+const { Client, Events, GatewayIntentBits } = require('discord.js');
 const config = require('./config.json');
 
-const client = new SteamUser();
+const logAuthPrefix = "****"
+const logTradeValidationStepsPrefix = "===="
+const logTradeValidationResultPrefix = "####"
+const logDebugPrefix = "[DEBUG]"
+
+const steamClient = new SteamUser();
 const community = new SteamCommunity();
 const manager = new TradeOfferManager({
-    "steam": client,
+    "steam": steamClient,
     "community": community,
     "language": "en"
 });
 
 const loginDetails = {
-    accountName: config.username,
-    password: config.password,
+    accountName: config.steam_username,
+    password: config.steam_password,
     logonID: Math.floor(Math.random() * 1000) + 1
 };
 
@@ -45,12 +50,14 @@ const cardsGiven = IO.counter({
     id: 'app/stb/cards/given'
 })
 
-const logAuthPrefix = "****"
-const logTradeValidationStepsPrefix = "===="
-const logTradeValidationResultPrefix = "####"
-const logDebugPrefix = "[DEBUG]"
+const discordClient = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-const identitySecret = config.identity_secret;
+discordClient.once(Events.ClientReady, readyClient => {
+    console.log(`${logDebugPrefix} Discord bot started as ${readyClient.user.tag}`);
+});
+discordClient.login(config.discord_token).then(r => {});
+
+const identitySecret = config.steam_identity_secret;
 const saleMarketFeeAppIdGive = Array.from(config.sale_market_fee_app_id_give).flatMap(id => String(id));
 const saleMarketFeeAppIdGet = config.sale_market_fee_app_id_get;
 const hardBlacklist = { get: any = Array.from(config.do_not_get_hard).flatMap(id => String(id)), give: any = Array.from(config.do_not_give_hard).flatMap(id => String(id)) };
@@ -65,18 +72,21 @@ let saleCardsToGiveValid = true;
 let includesHardBlacklisted = false;
 let includesSoftBlacklisted = false;
 
-// Disables asking for Steam Guard Code
-client.setOption("promptSteamGuardCode", false);
+let discordMessageBuilder = [];
 
-client.logOn(loginDetails);
+// Disables asking for Steam Guard Code
+steamClient.setOption("promptSteamGuardCode", false);
+
+steamClient.logOn(loginDetails);
 
 // Log in
-client.on('loggedOn', () => {
+steamClient.on('loggedOn', () => {
     console.log(`${logAuthPrefix} Logged into Steam!`);
-    client.setPersona(SteamUser.EPersonaState.Online);
+    sendDiscordMessage("🤖 Beep boop! I'm alive!")
+    steamClient.setPersona(SteamUser.EPersonaState.Online);
 });
 
-client.on("error", function (e) {
+steamClient.on("error", function (e) {
     console.log(`${logAuthPrefix} Fehler aufgetreten: ${e}`);
     metricsErrors.inc(); // Fehler zählen
 
@@ -87,47 +97,41 @@ client.on("error", function (e) {
     // Bei anderen Fehlern Reconnect versuchen
     setTimeout(() => {
         metricsReconnects.inc(); // Reconnect-Versuche zählen
-        client.logOn(loginDetails);
+        steamClient.logOn(loginDetails);
     }, 60000); // 1 Minute warten
 });
 
-/*setInterval(() => {
-    if (!client.connected) {
-        console.log("Verbindung verloren - versuche Reconnect");
-        client.logOn(loginDetails);
-    }
-}, 300000); // Alle 5 Minuten*/
-
 // If last Steam Guard Code was wrong, here a new one is created
-client.on("steamGuard", function (domain, callback, lastCodeWrong) {
+steamClient.on("steamGuard", function (domain, callback, lastCodeWrong) {
     if (lastCodeWrong) {
         console.log(`${logAuthPrefix} Last code wrong, try again!`);
     } else {
         console.log(`${logAuthPrefix} Authorized with Steam Guard Code.`)
     }
     setTimeout(function () {
-        callback(SteamTotp.generateAuthCode(config.shared_secret));
+        callback(SteamTotp.generateAuthCode(config.steam_shared_secret));
     }, 31000);
 });
 
-client.on('webSession', (sessionid, cookies) => {
+steamClient.on('webSession', (sessionid, cookies) => {
     manager.setCookies(cookies);
     community.setCookies(cookies);
 });
 
-client.on('connected', () => {
+steamClient.on('connected', () => {
     wasConnected = true;
     console.log(`${logAuthPrefix} Verbindung hergestellt`);
 
 });
 
-client.on('disconnected', () => {
+steamClient.on('disconnected', () => {
     if (wasConnected) {
         console.log(`${logAuthPrefix} Verbindung verloren - versuche Reconnect`);
+        sendDiscordMessage("🤖 Beep boop! Good night!")
         // Kurz warten und dann neu anmelden
         setTimeout(() => {
             metricsReconnects.inc();
-            client.logOn(loginDetails);
+            steamClient.logOn(loginDetails);
         }, 5000); // 5 Sekunden warten
     }
     wasConnected = false;
@@ -140,24 +144,22 @@ function cleanupTradeData() {
     includesHardBlacklisted = false;
     includesSoftBlacklisted = false;
     saleCardsToGiveValid = true;
+    discordMessageBuilder = [];
 }
 
 manager.on('newOffer', function (offer) {
 
-    /*community.getNotifications((err, notifications) => {
-        if (err) {
-            console.log(err)
-        } else {
-            console.log(notifications)
-            console.log(notifications.trades);
-        }
-    })*/
-
-    console.log(`${logTradeValidationStepsPrefix} start of offer validation for ${offer.id}`)
+    console.log(`${logTradeValidationStepsPrefix} start of offer validation for ${offer.id} from ${offer.partner.accountid}`)
+    discordMessageBuilder.push(`🆕 Offer from ${offer.partner.accountid} with ID ${offer.id} received.`);
+    discordMessageBuilder.push('\n')
 
     itemsToReceive = Array.from(offer.itemsToReceive);
     itemsToGive = Array.from(offer.itemsToGive);
     saleCardsToGiveValid = true;
+
+    discordMessageBuilder.push(`➡️ The Bot will receive ${itemsToReceive.length} cards`)
+    discordMessageBuilder.push(`⬅️ The Bot will give ${itemsToGive.length} cards`)
+    discordMessageBuilder.push('\n')
 
     console.debug(`${logDebugPrefix} itemsToReceive: (${itemsToReceive.length}) ${itemsToText(itemsToReceive)}`)
     console.debug(`${logDebugPrefix} itemsToGive: (${itemsToGive.length}) ${itemsToText(itemsToGive)}`)
@@ -210,6 +212,7 @@ manager.on('newOffer', function (offer) {
     });
 
     console.debug(`${logDebugPrefix} includesHardBlacklisted: ${includesHardBlacklisted}`)
+    discordMessageBuilder.push('🔄️ Following trades will be made:')
 
     // sorting out 1:1 trades
     itemsToGiveMap.forEach((items, key) => {
@@ -217,12 +220,24 @@ manager.on('newOffer', function (offer) {
             console.log(`${logTradeValidationStepsPrefix} found 1:1 trade for game ${key}`);
             itemsToReceiveMap.delete(key);
             itemsToGiveMap.delete(key);
+
+            for (let i = 0; i < items.length; i++) {
+                discordMessageBuilder.push(`⬅️ ${items[i].name} (${items[i].type.replaceAll(" Trading Card", "")}) \n➡️ ${itemsToReceiveMap.get(key)[i].name} (${items[i].type.replaceAll(" Trading Card", "")}) \n`);
+            }
+
         } else if (itemsToReceiveMap.has(key) && items.length < itemsToReceiveMap.get(key).length) {
             console.log(`${logTradeValidationStepsPrefix} found more items for game ${key} (${items.length} items to give and ${itemsToReceiveMap.get(key).length} items to receive)`);
 
             // for every given item, one item to get is removed
+            const popedItems = [];
             for (let i = 1; i <= items.length; i++) {
-                itemsToReceiveMap.get(key).pop();
+                const popedItem = itemsToReceiveMap.get(key).pop();
+                if (popedItem !== undefined) popedItems.push(popedItem);
+            }
+
+            for (let i = 0; i < popedItems.length; i++) {
+                discordMessageBuilder.push(`⬅️ ${itemsToGiveMap.get(key)[i].name} (${itemsToGiveMap.get(key)[i].type.replaceAll(" Trading Card", "")}) \n➡️ ${popedItems[i].name} (${popedItems.type.replaceAll(" Trading Card", "")}) \n`);
+
             }
             itemsToGiveMap.delete(key);
         }
@@ -299,7 +314,6 @@ manager.on('newOffer', function (offer) {
         item.tags.find(tag => tag.category === "cardborder")
             .internal_name === "cardborder_1").length
 
-
     itemsToGive.forEach(item => {
         console.log(`Card to give left: ${item.market_name} (${item.type})`)
     })
@@ -313,16 +327,29 @@ manager.on('newOffer', function (offer) {
 
     var crossSetItemCountValid = (normalCardsToGive !== undefined && normalCardsToGive * 2 <= normalCardsToReceive)
         && (foilCardsToGive !== undefined && foilCardsToGive * 2 <= foilCardsToReceive);
-    console.debug(`${logDebugPrefix} crossSetItemCountValid: ${crossSetItemCountValid}`)
+    console.debug(`${logDebugPrefix} crossSetItemCountValid: ${crossSetItemCountValid}`);
+
+    for (let i = 0; i < itemsToGive.length; i++) {
+        discordMessageBuilder.push(`⬅️ ${itemsToGive[i].name} (${itemsToGive[i].type.replaceAll(" Trading Card", "")}) \n➡️ ${itemsToReceive[(i * 2)].name} (${itemsToReceive[(i * 2)].type.replaceAll(" Trading Card", "")}) \n➡️ ${itemsToReceive[(i * 2) + 1].name} (${itemsToReceive[(i * 2) + 1].type.replaceAll(" Trading Card", "")}) \n`);
+    }
 
     const tradeAcceptCondition = itemsToReceiveAreTradingCards && (itemsToGiveAreTradingCards || itemsToGive.length === 0) && (crossSetItemCountValid || itemsToGive.length === 0) && saleCardsToGiveValid && !includesHardBlacklisted && !includesSoftBlacklisted;
-    console.debug(`${logDebugPrefix} tradeAcceptCondition: ${tradeAcceptCondition}`)
+    console.debug(`${logDebugPrefix} tradeAcceptCondition: ${tradeAcceptCondition}`);
     if (tradeAcceptCondition) {
-        acceptOffer(offer)
+        discordMessageBuilder.push('✅ Trade will be accepted!');
+        acceptOffer(offer);
     } else {
-        console.log(`${logTradeValidationResultPrefix} Can't validate offer ${offer.id}, please check manually`)
+        console.log(`${logTradeValidationResultPrefix} Can't validate offer ${offer.id}, please check manually`);
+        discordMessageBuilder.push('❌ Trade will not be accepted! Please check manually.');
+
+        if (!itemsToReceiveAreTradingCards || (!itemsToGiveAreTradingCards && itemsToGive > 0)) discordMessageBuilder.push('🔴 Found something other then trading card in trade.');
+        if (!crossSetItemCountValid) discordMessageBuilder.push('🔴 Cross trading does not add up');
+        if (!saleCardsToGiveValid) discordMessageBuilder.push('🔴 Found error within sale card trading');
+        if (includesHardBlacklisted) discordMessageBuilder.push('🔴 Trade contains hard blacklisted game');
+        if (includesSoftBlacklisted) discordMessageBuilder.push('🔴 Cross trading contains soft blacklisted game');
     }
-    console.log(`${logTradeValidationStepsPrefix} end of offer validation for ${offer.id}`)
+    sendDiscordMessage(discordMessageBuilder.join('\n'));
+    console.log(`${logTradeValidationStepsPrefix} end of offer validation for ${offer.id}`);
     cleanupTradeData();
 });
 
@@ -336,9 +363,9 @@ function acceptOffer(offer) {
 
             console.log(`${logAuthPrefix} Session timed out. Re-login`)
             // first log properly off
-            client.logOff()
+            steamClient.logOff()
             // second login again
-            client.logOn(loginDetails);
+            steamClient.logOn(loginDetails);
 
             // wait for authentication (31 seconds for new auth code + 9 seconds buffer) and try again to accept offer
             setTimeout(() => {
@@ -424,4 +451,9 @@ function specialCardGive(itemToGive, offer) {
 
 function itemsToText(items) {
     return `[${items.map(item => `'${item.market_name} (${item.type})'`)}]`;
+}
+
+function sendDiscordMessage(message) {
+    const channel = discordClient.channels.cache.get(config.discord_channel_id);
+    channel.send(message);
 }

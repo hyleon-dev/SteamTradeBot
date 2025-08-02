@@ -1,22 +1,24 @@
 {
-  "username": "",
-  "password": "",
-  "shared_secret": "",
-  "identity_secret": "",
+  "steam_username": "",
+  "steam_password": "",
+  "steam_shared_secret": "",
+  "steam_identity_secret": "",
+  "discord_toke": "",
+  "discord_channel_id": "",
   "sale_market_fee_app_id_give": "",
   "sale_market_fee_app_id_get": [
     ""
   ],
   "do_not_give_hard": [
-      ""
-    ],
-    "do_not_get_hard": [
-      ""
-    ],
-    "do_not_give_soft": [
-      ""
-    ],
-    "do_not_get_soft": [
-      ""
-    ]
+    ""
+  ],
+  "do_not_get_hard": [
+    ""
+  ],
+  "do_not_give_soft": [
+    ""
+  ],
+  "do_not_get_soft": [
+    ""
+  ]
 }
