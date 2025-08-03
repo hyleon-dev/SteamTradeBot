@@ -220,12 +220,13 @@ manager.on('newOffer', async function (offer) {
     itemsToGiveMap.forEach((items, key) => {
         if (itemsToReceiveMap.has(key) && items.length === itemsToReceiveMap.get(key).length) {
             console.log(`${logTradeValidationStepsPrefix} found 1:1 trade for game ${key}`);
-            itemsToReceiveMap.delete(key);
-            itemsToGiveMap.delete(key);
 
             for (let i = 0; i < items.length; i++) {
                 discordMessageBuilder.push(`⬅️ ${items[i].name} (${items[i].type.replaceAll(" Trading Card", "")}) \n➡️ ${itemsToReceiveMap.get(key)[i].name} (${items[i].type.replaceAll(" Trading Card", "")}) \n`);
             }
+
+            itemsToReceiveMap.delete(key);
+            itemsToGiveMap.delete(key);
 
         } else if (itemsToReceiveMap.has(key) && items.length < itemsToReceiveMap.get(key).length) {
             console.log(`${logTradeValidationStepsPrefix} found more items for game ${key} (${items.length} items to give and ${itemsToReceiveMap.get(key).length} items to receive)`);
@@ -239,7 +240,6 @@ manager.on('newOffer', async function (offer) {
 
             for (let i = 0; i < popedItems.length; i++) {
                 discordMessageBuilder.push(`⬅️ ${itemsToGiveMap.get(key)[i].name} (${itemsToGiveMap.get(key)[i].type.replaceAll(" Trading Card", "")}) \n➡️ ${popedItems[i].name} (${popedItems.type.replaceAll(" Trading Card", "")}) \n`);
-
             }
             itemsToGiveMap.delete(key);
         }
