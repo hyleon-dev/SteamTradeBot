@@ -222,7 +222,7 @@ manager.on('newOffer', async function (offer) {
             console.log(`${logTradeValidationStepsPrefix} found 1:1 trade for game ${key}`);
 
             for (let i = 0; i < items.length; i++) {
-                discordMessageBuilder.push(`⬅️ ${items[i].name} (${items[i].type.replaceAll(" Trading Card", "")}) \n➡️ ${itemsToReceiveMap.get(key)[i].name} (${items[i].type.replaceAll(" Trading Card", "")}) \n`);
+                discordMessageBuilder.push(`⬅️ ${items[i].name} (${trimItemType(items[i].type)}) \n➡️ ${itemsToReceiveMap.get(key)[i].name} (${trimItemType(items[i].type)}) \n`);
             }
 
             itemsToReceiveMap.delete(key);
@@ -239,7 +239,7 @@ manager.on('newOffer', async function (offer) {
             }
 
             for (let i = 0; i < popedItems.length; i++) {
-                discordMessageBuilder.push(`⬅️ ${itemsToGiveMap.get(key)[i].name} (${itemsToGiveMap.get(key)[i].type.replaceAll(" Trading Card", "")}) \n➡️ ${popedItems[i].name} (${popedItems.type.replaceAll(" Trading Card", "")}) \n`);
+                discordMessageBuilder.push(`⬅️ ${itemsToGiveMap.get(key)[i].name} (${trimItemType(itemsToGiveMap.get(key)[i].type)}) \n➡️ ${popedItems[i].name} (${trimItemType(popedItems.type)}) \n`);
             }
             itemsToGiveMap.delete(key);
         }
@@ -333,7 +333,7 @@ manager.on('newOffer', async function (offer) {
 
     if (crossSetItemCountValid) {
         for (let i = 0; i < itemsToGive.length; i++) {
-            discordMessageBuilder.push(`⬅️ ${itemsToGive[i].name} (${itemsToGive[i].type.replaceAll(" Trading Card", "")}) \n➡️ ${itemsToReceive[(i * 2)].name} (${itemsToReceive[(i * 2)].type.replaceAll(" Trading Card", "")}) \n➡️ ${itemsToReceive[(i * 2) + 1].name} (${itemsToReceive[(i * 2) + 1].type.replaceAll(" Trading Card", "")}) \n`);
+            discordMessageBuilder.push(`⬅️ ${itemsToGive[i].name} (${trimItemType(itemsToGive[i].type)}) \n➡️ ${itemsToReceive[(i * 2)].name} (${trimItemType(itemsToReceive[(i * 2)].type)}) \n➡️ ${itemsToReceive[(i * 2) + 1].name} (${trimItemType(itemsToReceive[(i * 2) + 1].type)}) \n`);
         }
     }
 
@@ -455,6 +455,10 @@ function specialCardGive(itemToGive, offer) {
 
 function itemsToText(items) {
     return `[${items.map(item => `'${item.market_name} (${item.type})'`)}]`;
+}
+
+function trimItemType(type) {
+    return type.replaceAll(" Foil").replaceAll(" Trading Card", "");
 }
 
 function sendDiscordMessage(message) {
