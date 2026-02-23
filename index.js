@@ -27,7 +27,7 @@ const loginDetails = {
 
 
 const hearthbeat = setInterval(() => {
-    fetch(`http://${config.uptimekuma_url}/api/push/${config.uptimekuma_key}?status=up&msg=OK&ping=`);
+    fetch(`${config.uptimekuma_url}/api/push/${config.uptimekuma_key}?status=up&msg=OK&ping=`);
 }, 60000); // 60000 ms = 60 seconds   
 
 const metricsReconnects = IO.counter({
