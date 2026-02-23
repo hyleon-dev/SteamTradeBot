@@ -25,6 +25,11 @@ const loginDetails = {
     logonID: Math.floor(Math.random() * 1000) + 1
 };
 
+
+const hearthbeat = setInterval(() => {
+    fetch(`http://${config.uptimekuma_url}/api/push/${config.uptimekuma_key}?status=up&msg=OK&ping=`);
+}, 60000); // 60000 ms = 60 seconds   
+
 const metricsReconnects = IO.counter({
     name: 'Reconnects',
     id: 'app/stb/reconnects'
