@@ -467,7 +467,7 @@ function trimItemType(type) {
 }
 
 function sendDiscordMessage(message) {
-    fetch(webhookUrl, {
+    fetch(discordWebhookURL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
