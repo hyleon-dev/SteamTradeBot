@@ -6,6 +6,8 @@
   "steam_api_key": "",
   "discord_toke": "",
   "discord_channel_id": "",
+  "uptimekuma_url": "",
+  "uptimekuma_key": "",
   "sale_market_fee_app_id_give": "",
   "sale_market_fee_app_id_get": [
     ""
