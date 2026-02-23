@@ -32,7 +32,6 @@ const hearthbeat = async () => {
     await fetch(pushURL);
     console.log("Hearthbeat!");
 };
-
 hearthbeat();
 setInterval(hearthbeat, interval * 1000);
 
@@ -61,12 +60,7 @@ const cardsGiven = IO.counter({
     id: 'app/stb/cards/given'
 })
 
-const discordClient = new Client({ intents: [GatewayIntentBits.Guilds] });
-
-discordClient.once(Events.ClientReady, readyClient => {
-    console.log(`${logDebugPrefix} Discord bot started as ${readyClient.user.tag}`);
-});
-discordClient.login(config.discord_token).then(r => {});
+const discordWebhookURL = `https://discord.com/api/webhooks/${config.discord_webhook_id}/${config.discord_webhook_token}`;
 
 const identitySecret = config.steam_identity_secret;
 const saleMarketFeeAppIdGive = Array.from(config.sale_market_fee_app_id_give).flatMap(id => String(id));
@@ -473,8 +467,21 @@ function trimItemType(type) {
 }
 
 function sendDiscordMessage(message) {
-    const channel = discordClient.channels.cache.get(config.discord_channel_id);
-    channel.send(message);
+    fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: message,
+        username: 'SteamTradeBot'
+      })
+    })
+    .then(response => {
+      if (response.ok) console.log('Nachricht gesendet!');
+      else console.error('Fehler beim Senden:', response.statusText);
+    })
+    .catch(error => console.error('Fehler:', error));
 }
 
 async function loadTradePartner(partnerAccountId) {
