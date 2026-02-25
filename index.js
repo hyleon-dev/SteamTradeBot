@@ -5,6 +5,9 @@ const TradeOfferManager = require('steam-tradeoffer-manager');
 const IO = require('@pm2/io');
 const { Client, Events, GatewayIntentBits } = require('discord.js');
 const config = require('./config.json');
+const Database = require('better-sqlite3');
+const {format, getISOWeek} = require("date-fns");
+const db = new Database('metrics.db');
 
 const logAuthPrefix = "****"
 const logTradeValidationStepsPrefix = "===="
@@ -19,15 +22,17 @@ const manager = new TradeOfferManager({
     "language": "en"
 });
 
+// Steam
 const loginDetails = {
     accountName: config.steam_username,
     password: config.steam_password,
     logonID: Math.floor(Math.random() * 1000) + 1
 };
+const identitySecret = config.steam_identity_secret;
 
+// Uptime Kuma monitoring
 const pushURL = `${config.uptimekuma_url}/api/push/${config.uptimekuma_key}?status=up&msg=OK&ping=`;
 const interval = 60;
-
 const hearthbeat = async () => {
     await fetch(pushURL);
     console.log("Hearthbeat!");
@@ -35,34 +40,50 @@ const hearthbeat = async () => {
 hearthbeat();
 setInterval(hearthbeat, interval * 1000);
 
-const metricsReconnects = IO.counter({
-    name: 'Reconnects',
-    id: 'app/stb/reconnects'
-});
+// persistent logging
 
-const metricsErrors = IO.counter({
-    name: 'Errors',
-    id: 'app/stb/errors'
-});
+// V 1.0
+db.exec(`
+  CREATE TABLE IF NOT EXISTS stats (
+    trade_id TEXT PRIMARY KEY,
+    day TEXT,
+    month TEXT,
+    year TEXT,
+    week TEXT,
+    gained INTEGER,
+    given INTEGER
+  )
+`);
 
-const trades = IO.counter({
-    name: 'Trades',
-    id: 'app/stb/trades'
-})
+const upsertStat = db.prepare(`
+  INSERT INTO stats (trade_id, day, month, year, week, gained, given) 
+  VALUES (@trade_id, @day, @month, @year, @week, @gained, @given)
+`);
 
-const cardsReceived = IO.counter({
-    name: 'Cards Received',
-    id: 'app/stb/cards/received'
-})
+function logOffer(offer) {
 
-const cardsGiven = IO.counter({
-    name: 'Card Given',
-    id: 'app/stb/cards/given'
-})
+    const trade_id = offer.id;
+    const day = format(offer.created, 'dd');
+    const month = format(offer.created, 'MM');
+    const year = format(offer.created, 'yyyy');
+    const week = getISOWeek(offer.created);
+    const gained = offer.itemsToReceive.length;
+    const given = offer.itemsToGive.length;
+    upsertStat.run({ trade_id, day, month, year, week, gained, given });
+}
 
+const getTotalTrades = db.prepare('select count(*) from stats;')
+const getTotalCardsGiven = db.prepare('select sum(given) from stats;')
+const getTotalCardsGained = db.prepare('select sum(gained) from stats;')
+
+// Prometheus metrics
+// todo
+
+// Discord
 const discordWebhookURL = `https://discord.com/api/webhooks/${config.discord_webhook_id}/${config.discord_webhook_token}`;
+let discordMessageBuilder = [];
 
-const identitySecret = config.steam_identity_secret;
+// Config
 const saleMarketFeeAppIdGive = Array.from(config.sale_market_fee_app_id_give).flatMap(id => String(id));
 const saleMarketFeeAppIdGet = config.sale_market_fee_app_id_get;
 const hardBlacklist = { get: any = Array.from(config.do_not_get_hard).flatMap(id => String(id)), give: any = Array.from(config.do_not_give_hard).flatMap(id => String(id)) };
@@ -76,8 +97,6 @@ let itemsToGive
 let saleCardsToGiveValid = true;
 let includesHardBlacklisted = false;
 let includesSoftBlacklisted = false;
-
-let discordMessageBuilder = [];
 
 // Disables asking for Steam Guard Code
 steamClient.setOption("promptSteamGuardCode", false);
@@ -389,9 +408,7 @@ function acceptOffer(offer) {
                     console.log(err)
                 } else {
                     console.log(`${logTradeValidationResultPrefix} Confirmed offer ${offer.id}.`);
-                    trades.inc();
-                    cardsGiven.inc(offer.itemsToGive.length);
-                    cardsReceived.inc(offer.itemsToReceive.length);
+                    logOffer(offer);
                 }
             });
         }

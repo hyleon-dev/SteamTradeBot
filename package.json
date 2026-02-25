@@ -13,7 +13,9 @@
     "steam-tradeoffer-manager": "^2.11.7",
     "steam-user": "^5.2.0",
     "steamcommunity": "^3.46.1",
-    "xml2js": "^0.6.0"
+    "xml2js": "^0.6.0",
+    "better-sqlite3": "^12.6.2",
+    "date-fns": "^4.1.0"
   },
   "scripts": {
     "start": "pm2 start ecosystem.config.js",

@@ -132,3 +132,5 @@ dist
 # IDE
 .idea
 /config.json
+/metrics.db
+/metrics.sqlite
