@@ -2,12 +2,11 @@ const SteamUser = require('steam-user');
 const SteamTotp = require('steam-totp');
 const SteamCommunity = require("steamcommunity");
 const TradeOfferManager = require('steam-tradeoffer-manager');
-const IO = require('@pm2/io');
-const { Client, Events, GatewayIntentBits } = require('discord.js');
+const prom = require('prom-client');
+const express = require('express')
 const config = require('./config.json');
 const Database = require('better-sqlite3');
 const {format, getISOWeek} = require("date-fns");
-const db = new Database('metrics.db');
 
 const logAuthPrefix = "****"
 const logTradeValidationStepsPrefix = "===="
@@ -21,6 +20,8 @@ const manager = new TradeOfferManager({
     "community": community,
     "language": "en"
 });
+
+const appPort = parseInt(config.port);
 
 // Steam
 const loginDetails = {
@@ -41,6 +42,7 @@ hearthbeat();
 setInterval(hearthbeat, interval * 1000);
 
 // persistent logging
+const db = new Database('metrics.db');
 
 // V 1.0
 db.exec(`
@@ -69,15 +71,179 @@ function logOffer(offer) {
     const week = getISOWeek(offer.created);
     const gained = offer.itemsToReceive.length;
     const given = offer.itemsToGive.length;
-    upsertStat.run({ trade_id, day, month, year, week, gained, given });
+    upsertStat.run({trade_id, day, month, year, week, gained, given});
 }
 
-const getTotalTrades = db.prepare('select count(*) from stats;')
-const getTotalCardsGiven = db.prepare('select sum(given) from stats;')
-const getTotalCardsGained = db.prepare('select sum(gained) from stats;')
-
 // Prometheus metrics
-// todo
+const promPrefix = config.prometheus_prefix.toUpperCase() + '_'
+const collectDefaultMetrics = prom.collectDefaultMetrics;
+collectDefaultMetrics({ prefix: promPrefix })
+
+new prom.Gauge({
+    name: promPrefix + 'TOTAL_TRADES',
+    help: 'Total number of trades',
+    collect() {
+        const data = db.prepare('select count(*) from stats;').pluck().get();
+        this.set(data || 0);
+    }
+});
+new prom.Gauge({
+    name: promPrefix + 'TOTAL_CARDS_GIVEN',
+    help: 'Total number of cards given',
+    collect() {
+        const data = db.prepare('select sum(given) from stats;').pluck().get();
+        this.set(data || 0);
+    }
+});
+new prom.Gauge({
+    name: promPrefix + 'TOTAL_CARDS_GAINED',
+    help: 'Total number of cards gained',
+    collect() {
+        const data = db.prepare('select sum(gained) from stats;').pluck().get();
+        this.set(data || 0);
+    }
+});
+
+new prom.Gauge({
+    name: promPrefix + 'TRADES_THIS_YEAR',
+    help: 'Number of trades for current year',
+    collect() {
+        const data = db.prepare(`
+            select count(*)
+            from stats
+            where year == '${format(new Date(), 'yyyy')}'
+        `).pluck().get();
+        this.set(data || 0);
+    }
+});
+new prom.Gauge({
+    name: promPrefix + 'CARDS_GIVEN_THIS_YEAR',
+    help: 'Number of cards given for current year',
+    collect() {
+        const data = db.prepare(`
+            select sum(given)
+            from stats
+            where year == '${format(new Date(), 'yyyy')}'
+        `).pluck().get();
+        this.set(data || 0);
+    }
+});
+new prom.Gauge({
+    name: promPrefix + 'CARDS_GAINED_THIS_YEAR',
+    help: 'Number of cards gained for current year',
+    collect() {
+        const data = db.prepare(`
+            select sum(gained)
+            from stats
+            where year == '${format(new Date(), 'yyyy')}'
+        `).pluck().get();
+        this.set(data || 0);
+    }
+});
+
+new prom.Gauge({
+    name: promPrefix + 'TRADES_THIS_MONTH',
+    help: 'Number of trades for current month',
+    collect() {
+        const data = db.prepare(`
+            select count(*)
+            from stats
+            where year == '${format(new Date(), 'yyyy')}'
+              and month == '${format(new Date(), 'MM')}'
+        `).pluck().get();
+        this.set(data || 0);
+    }
+});
+new prom.Gauge({
+    name: promPrefix + 'CARDS_GIVEN_THIS_MONTH',
+    help: 'Number of cards given for current month',
+    collect() {
+        const data = db.prepare(`
+            select sum(given)
+            from stats
+            where year == '${format(new Date(), 'yyyy')}'
+              and month == '${format(new Date(), 'MM')}'
+        `).pluck().get();
+        this.set(data || 0);
+    }
+});
+new prom.Gauge({
+    name: promPrefix + 'CARDS_GAINED_THIS_MONTH',
+    help: 'Number of cards gained for current month',
+    collect() {
+        const data = db.prepare(`
+            select sum(gained)
+            from stats
+            where year == '${format(new Date(), 'yyyy')}'
+              and month == '${format(new Date(), 'MM')}'
+        `).pluck().get();
+        this.set(data || 0);
+    }
+});
+
+new prom.Gauge({
+    name: promPrefix + 'TRADES_TODAY',
+    help: 'Number of trades for current day',
+    collect() {
+        const data = db.prepare(`
+            select count(*)
+            from stats
+            where year == '${format(new Date(), 'yyyy')}'
+              and month == '${format(new Date(), 'MM')}'
+              and day == '${format(new Date(), 'dd')}'
+        `).pluck().get();
+        this.set(data || 0);
+    }
+});
+new prom.Gauge({
+    name: promPrefix + 'CARDS_GIVEN_TODAY',
+    help: 'Number of cards given for current day',
+    collect() {
+        const data = db.prepare(`
+            select sum(given)
+            from stats
+            where year == '${format(new Date(), 'yyyy')}'
+              and month == '${format(new Date(), 'MM')}'
+              and day == '${format(new Date(), 'dd')}'
+        `).pluck().get();
+        this.set(data || 0);
+    }
+});
+new prom.Gauge({
+    name: promPrefix + 'CARDS_GAINED_TODAY',
+    help: 'Number of cards gained for current day',
+    collect() {
+        const data = db.prepare(`
+            select sum(gained)
+            from stats
+            where year == '${format(new Date(), 'yyyy')}'
+              and month == '${format(new Date(), 'MM')}'
+              and day == '${format(new Date(), 'dd')}'
+        `).pluck().get();
+        this.set(data || 0);
+    }
+});
+
+const errorCounter = new prom.Counter({
+    name: promPrefix + 'CURRENT_RUN_ERRORS',
+    help: 'Number of errors on current run'
+})
+const reconnectCounter = new prom.Counter({
+    name: promPrefix + 'CURRENT_RUN_RECONNECTS',
+    help: 'Number of reconnects on current run'
+})
+
+// metric end point
+const app = express();
+app.get('/metrics', async (req, res) => {
+    try {
+        res.set('Content-Type', prom.register.contentType);
+        res.end(await prom.register.metrics());
+    } catch (ex) {
+        res.status(500).end(ex);
+    }
+});
+app.listen(appPort, () => console.log('Server running on port ' + appPort));
 
 // Discord
 const discordWebhookURL = `https://discord.com/api/webhooks/${config.discord_webhook_id}/${config.discord_webhook_token}`;
@@ -112,7 +278,7 @@ steamClient.on('loggedOn', () => {
 
 steamClient.on("error", function (e) {
     console.log(`${logAuthPrefix} Fehler aufgetreten: ${e}`);
-    metricsErrors.inc(); // Fehler zählen
+    errorCounter.inc(); // Fehler zählen
 
     // Nur bei kritischen Fehlern beenden
     if (e.message.includes("Invalid Password") || e.message.includes("Invalid Auth Code")) {
@@ -120,7 +286,7 @@ steamClient.on("error", function (e) {
     }
     // Bei anderen Fehlern Reconnect versuchen
     setTimeout(() => {
-        metricsReconnects.inc(); // Reconnect-Versuche zählen
+        reconnectCounter.inc(); // Reconnect-Versuche zählen
         steamClient.logOn(loginDetails);
     }, 60000); // 1 Minute warten
 });
@@ -154,7 +320,7 @@ steamClient.on('disconnected', () => {
         sendDiscordMessage("🤖 Beep boop! Good night!")
         // Kurz warten und dann neu anmelden
         setTimeout(() => {
-            metricsReconnects.inc();
+            reconnectCounter.inc();
             steamClient.logOn(loginDetails);
         }, 5000); // 5 Sekunden warten
     }
@@ -387,7 +553,7 @@ function acceptOffer(offer) {
             console.log(err);
         } else if (err && err.message === "Not Logged In") {
             // if session is expired and error has been thrown
-            metricsReconnects.inc(); // Reconnect nach Session-Timeout zählen
+            reconnectCounter.inc(); // Reconnect nach Session-Timeout zählen
 
             console.log(`${logAuthPrefix} Session timed out. Re-login`)
             // first log properly off
