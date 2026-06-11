@@ -35,12 +35,11 @@ const identitySecret = config.steam_identity_secret;
 // Uptime Kuma monitoring
 const pushURL = `${config.uptimekuma_url}/api/push/${config.uptimekuma_key}?status=up&msg=OK&ping=`;
 const interval = 60;
-const hearthbeat = async () => {
+const heartbeat = async () => {
     await fetch(pushURL);
-    // logger.info("Hearthbeat!");
 };
-hearthbeat();
-setInterval(hearthbeat, interval * 1000);
+heartbeat();
+setInterval(heartbeat, interval * 1000);
 
 // persistent logging
 const db = new Database('metrics.db');

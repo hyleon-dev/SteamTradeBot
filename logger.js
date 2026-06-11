@@ -43,6 +43,18 @@ const logger = createLogger({
           format.printf(info => `[${info.timestamp}] ${info.level}: ${info.message}`)
       )
     })
+  ],
+  exceptionHandlers: [
+    new DailyRotateFile({
+      filename: 'logs/crash-%DATE%.log',
+      datePattern: 'YYYY-MM-DD'
+    })
+  ],
+  rejectionHandlers: [
+    new DailyRotateFile({
+      filename: 'logs/crash-%DATE%.log',
+      datePattern: 'YYYY-MM-DD'
+    })
   ]
 });
 
