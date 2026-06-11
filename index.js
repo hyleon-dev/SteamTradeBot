@@ -36,7 +36,7 @@ const pushURL = `${config.uptimekuma_url}/api/push/${config.uptimekuma_key}?stat
 const interval = 60;
 const hearthbeat = async () => {
     await fetch(pushURL);
-    console.log("Hearthbeat!");
+    // console.log("Hearthbeat!");
 };
 hearthbeat();
 setInterval(hearthbeat, interval * 1000);
@@ -412,7 +412,7 @@ manager.on('newOffer', async function (offer) {
             console.log(`${logTradeValidationStepsPrefix} found 1:1 trade for game ${key}`);
 
             for (let i = 0; i < items.length; i++) {
-                discordMessageBuilder.push(`⬅️ ${items[i].name} (${trimItemType(items[i].type)}) \n➡️ ${itemsToReceiveMap.get(key)[i].name} (${trimItemType(items[i].type)}) \n`);
+                discordMessageBuilder.push(`➡️ ${itemsToReceiveMap.get(key)[i].name} (${trimItemType(items[i].type)}) \n⬅️ ${items[i].name} (${trimItemType(items[i].type)}) \n`);
             }
 
             itemsToReceiveMap.delete(key);
@@ -429,7 +429,7 @@ manager.on('newOffer', async function (offer) {
             }
 
             for (let i = 0; i < popedItems.length; i++) {
-                discordMessageBuilder.push(`⬅️ ${itemsToGiveMap.get(key)[i].name} (${trimItemType(itemsToGiveMap.get(key)[i].type)}) \n➡️ ${popedItems[i].name} (${trimItemType(popedItems.type)}) \n`);
+                discordMessageBuilder.push(`➡️ ${popedItems[i].name} (${trimItemType(popedItems.type)}) \n⬅️ ${itemsToGiveMap.get(key)[i].name} (${trimItemType(itemsToGiveMap.get(key)[i].type)}) \n`);
             }
             itemsToGiveMap.delete(key);
         }
@@ -523,7 +523,7 @@ manager.on('newOffer', async function (offer) {
 
     if (crossSetItemCountValid) {
         for (let i = 0; i < itemsToGive.length; i++) {
-            discordMessageBuilder.push(`⬅️ ${itemsToGive[i].name} (${trimItemType(itemsToGive[i].type)}) \n➡️ ${itemsToReceive[(i * 2)].name} (${trimItemType(itemsToReceive[(i * 2)].type)}) \n➡️ ${itemsToReceive[(i * 2) + 1].name} (${trimItemType(itemsToReceive[(i * 2) + 1].type)}) \n`);
+            discordMessageBuilder.push(`➡️ ${itemsToReceive[(i * 2)].name} (${trimItemType(itemsToReceive[(i * 2)].type)}) \n➡️ ${itemsToReceive[(i * 2) + 1].name} (${trimItemType(itemsToReceive[(i * 2) + 1].type)}) \n⬅️ ${itemsToGive[i].name} (${trimItemType(itemsToGive[i].type)}) \n`);
         }
     }
 
