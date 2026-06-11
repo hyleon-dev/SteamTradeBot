@@ -1,6 +1,6 @@
 {
   "name": "steamtradebot",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "description": "Steam Trading Bot",
   "main": "index.js",
   "author": "n0eL_1405",
@@ -16,6 +16,8 @@
     "steam-tradeoffer-manager": "^2.13.0",
     "steam-user": "^5.3.0",
     "steamcommunity": "^3.50.0",
+    "winston": "^3.19.0",
+    "winston-daily-rotate-file": "^5.0.0",
     "xml2js": "^0.6.0"
   },
   "scripts": {
