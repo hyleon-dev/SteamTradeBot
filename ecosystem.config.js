@@ -6,6 +6,7 @@ module.exports = {
             instances: 1,
             max_memory_restart: "500M",
             exec_mode: "fork",
+            cron_restart: "0 3 * * *",
             // Logging
             out_file: "/dev/null",
             error_file: "/dev/null",
