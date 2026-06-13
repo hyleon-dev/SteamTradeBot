@@ -7,6 +7,7 @@ module.exports = {
             max_memory_restart: "500M",
             exec_mode: "fork",
             cron_restart: "0 3 * * *",
+            interpreter: "node",
             // Logging
             out_file: "/dev/null",
             error_file: "/dev/null",
