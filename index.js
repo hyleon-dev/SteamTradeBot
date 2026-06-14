@@ -710,10 +710,10 @@ function sendDiscordMessage(message) {
       })
     })
     .then(response => {
-      if (response.ok) logger.info('Nachricht gesendet!');
-      else console.error('Fehler beim Senden:', response.statusText);
+      if (response.ok) logger.info('Discord message send!');
+      else logger.error(`Error while sending Discord message: ${response.statusText}`);
     })
-    .catch(error => console.error('Fehler:', error));
+    .catch(error => logger.error(error));
 }
 
 async function loadUserFromAccountId(steamId) {
