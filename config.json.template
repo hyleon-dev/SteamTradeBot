@@ -5,6 +5,7 @@
   "steam_shared_secret": "",
   "steam_identity_secret": "",
   "steam_api_key": "",
+  "steam_main_account": "",
   "discord_webhook_id": "",
   "discord_webhook_token": "",
   "uptimekuma_url": "",
@@ -24,6 +25,9 @@
     ""
   ],
   "do_not_get_soft": [
+    ""
+  ],
+  "ignore_messages_from": [
     ""
   ]
 }

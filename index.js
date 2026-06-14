@@ -2,6 +2,7 @@ const SteamUser = require('steam-user');
 const SteamTotp = require('steam-totp');
 const SteamCommunity = require("steamcommunity");
 const TradeOfferManager = require('steam-tradeoffer-manager');
+const SteamID = require('steamid');
 const prom = require('prom-client');
 const express = require('express')
 const config = require('./config.json');
@@ -44,7 +45,7 @@ setInterval(heartbeat, interval * 1000);
 // persistent logging
 const db = new Database('metrics.db');
 
-// V 1.0
+// V 1.0 - init
 db.exec(`
   CREATE TABLE IF NOT EXISTS stats (
     trade_id TEXT PRIMARY KEY,
@@ -54,13 +55,29 @@ db.exec(`
     week TEXT,
     gained INTEGER,
     given INTEGER
-  )
+  );
+`);
+
+// V 1.1 - added messages table
+db.exec(`
+    CREATE TABLE IF NOT EXISTS messages (
+        message_id TEXT,
+        sender_id TEXT,
+        timestamp TIMESTAMP,
+        message_text TEXT,
+        PRIMARY KEY (message_id, sender_id)
+    );
 `);
 
 const upsertStat = db.prepare(`
-  INSERT INTO stats (trade_id, day, month, year, week, gained, given) 
-  VALUES (@trade_id, @day, @month, @year, @week, @gained, @given)
+    INSERT INTO stats (trade_id, day, month, year, week, gained, given)
+    VALUES (@trade_id, @day, @month, @year, @week, @gained, @given)
 `);
+
+const upsertMessage = db.prepare(`
+    INSERT INTO messages (message_id, sender_id, timestamp, message_text)
+    VALUES (@message_id, @sender_id, DATETIME(@unixtimestemp, 'unixepoch'), @message_text)
+`)
 
 function logOffer(offer) {
 
@@ -327,6 +344,37 @@ steamClient.on('disconnected', () => {
     wasConnected = false;
 });
 
+// Steam chat message forwarding
+steamClient.chat.on('friendMessage', async (msg) => {
+
+    const userLinkPart1 = `https://steamcommunity.com/profiles/`
+    const uniqueId = `${msg.server_timestamp.getTime()}_${msg.ordinal}`;
+    const steamID64 = msg.steamid_friend.getSteamID64();
+    const user = await loadUserFromAccountId(steamID64);
+
+    if (config.ignore_messages_from.includes(steamID64)) {
+        logger.debug(`Message from ${steamID64} ignored`);
+        return;
+    }
+
+    if (msg.message.startsWith(`[tradeoffer sender=${msg.steamid_friend.accountid}`, false) && msg.message.endsWith('[/tradeoffer]', false)) {
+        logger.debug(`Trade offer message from ${steamID64} ignored`);
+        return;
+    }
+
+    logger.info(`Message from ${user.personaname} (${steamID64}) received: '${msg.message}'`);
+
+    upsertMessage.run({
+        message_id: uniqueId,
+        sender_id: steamID64,
+        unixtimestemp: msg.server_timestamp.getTime() / 1000,
+        message_text: msg.message
+    });
+
+    await steamClient.chat.sendFriendMessage(msg.steamid_friend, `Please use main account for communication: ${userLinkPart1}${config.steam_main_account}`);
+    await steamClient.chat.sendFriendMessage(config.steam_main_account, `Message from ${user.personaname}: '${msg.message}' \n ${userLinkPart1}${steamID64}`);
+})
+
 // Arrays nach Verarbeitung leeren
 function cleanupTradeData() {
     itemsToReceive = [];
@@ -339,9 +387,10 @@ function cleanupTradeData() {
 
 manager.on('newOffer', async function (offer) {
 
-    let tradePartner = await loadTradePartner(offer.partner.accountid);
+    const partnerSteamId = SteamID.fromIndividualAccountID(offer.partner.accountid);
+    let tradePartner = await loadUserFromAccountId(partnerSteamId.getSteamID64());
 
-    logger.info(`${logTradeValidationStepsPrefix} start of offer validation for ${offer.id} from ${tradePartner.personaname} (${offer.partner.accountid})`)
+    logger.info(`${logTradeValidationStepsPrefix} start of offer validation for ${offer.id} from ${tradePartner.personaname} (${tradePartner.steamid})`)
     discordMessageBuilder.push(`🆕 Offer from ${tradePartner.personaname} received.`);
     discordMessageBuilder.push('\n')
 
@@ -667,8 +716,7 @@ function sendDiscordMessage(message) {
     .catch(error => console.error('Fehler:', error));
 }
 
-async function loadTradePartner(partnerAccountId) {
-    const steamId = (BigInt(partnerAccountId) + 76561197960265728n).toString();
+async function loadUserFromAccountId(steamId) {
     return (await (await fetch(`https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=${config.steam_api_key}&steamids=${steamId}`)).json())
         .response
         .players[0];

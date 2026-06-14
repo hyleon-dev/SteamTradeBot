@@ -134,4 +134,4 @@ dist
 /config.json
 /metrics.db
 /metrics.sqlite
-!/package-lock.json
+/package-lock.json
