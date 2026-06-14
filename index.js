@@ -3,12 +3,11 @@ const SteamTotp = require('steam-totp');
 const SteamCommunity = require("steamcommunity");
 const TradeOfferManager = require('steam-tradeoffer-manager');
 const SteamID = require('steamid');
-const prom = require('prom-client');
-const express = require('express')
 const config = require('./config.json');
-const Database = require('better-sqlite3');
-const {format, getISOWeek} = require("date-fns");
 const logger = require('./logger');
+const { logOffer, logMessage } = require('./db');
+const { errorCounter, reconnectCounter } = require('./metrics');
+const { discordMessageBuilder, sendDiscordMessage } = require('./discord');
 
 const logAuthPrefix = ""
 const logTradeValidationStepsPrefix = ""
@@ -22,8 +21,6 @@ const manager = new TradeOfferManager({
     "community": community,
     "language": "en"
 });
-
-const appPort = parseInt(config.port);
 
 // Steam
 const loginDetails = {
@@ -41,230 +38,6 @@ const heartbeat = async () => {
 };
 heartbeat();
 setInterval(heartbeat, interval * 1000);
-
-// persistent logging
-const db = new Database('metrics.db');
-
-// V 1.0 - init
-db.exec(`
-  CREATE TABLE IF NOT EXISTS stats (
-    trade_id TEXT PRIMARY KEY,
-    day TEXT,
-    month TEXT,
-    year TEXT,
-    week TEXT,
-    gained INTEGER,
-    given INTEGER
-  );
-`);
-
-// V 1.1 - added messages table
-db.exec(`
-    CREATE TABLE IF NOT EXISTS messages (
-        message_id TEXT,
-        sender_id TEXT,
-        timestamp TIMESTAMP,
-        message_text TEXT,
-        PRIMARY KEY (message_id, sender_id)
-    );
-`);
-
-const upsertStat = db.prepare(`
-    INSERT INTO stats (trade_id, day, month, year, week, gained, given)
-    VALUES (@trade_id, @day, @month, @year, @week, @gained, @given)
-`);
-
-const upsertMessage = db.prepare(`
-    INSERT INTO messages (message_id, sender_id, timestamp, message_text)
-    VALUES (@message_id, @sender_id, DATETIME(@unixtimestemp, 'unixepoch'), @message_text)
-`)
-
-function logOffer(offer) {
-
-    const trade_id = offer.id;
-    const day = format(offer.created, 'dd');
-    const month = format(offer.created, 'MM');
-    const year = format(offer.created, 'yyyy');
-    const week = getISOWeek(offer.created);
-    const gained = offer.itemsToReceive.length;
-    const given = offer.itemsToGive.length;
-    upsertStat.run({trade_id, day, month, year, week, gained, given});
-}
-
-// Prometheus metrics
-const promPrefix = config.prometheus_prefix.toUpperCase() + '_'
-const collectDefaultMetrics = prom.collectDefaultMetrics;
-collectDefaultMetrics({ prefix: promPrefix })
-
-new prom.Gauge({
-    name: promPrefix + 'TOTAL_TRADES',
-    help: 'Total number of trades',
-    collect() {
-        const data = db.prepare('select count(*) from stats;').pluck().get();
-        this.set(data || 0);
-    }
-});
-new prom.Gauge({
-    name: promPrefix + 'TOTAL_CARDS_GIVEN',
-    help: 'Total number of cards given',
-    collect() {
-        const data = db.prepare('select sum(given) from stats;').pluck().get();
-        this.set(data || 0);
-    }
-});
-new prom.Gauge({
-    name: promPrefix + 'TOTAL_CARDS_GAINED',
-    help: 'Total number of cards gained',
-    collect() {
-        const data = db.prepare('select sum(gained) from stats;').pluck().get();
-        this.set(data || 0);
-    }
-});
-
-new prom.Gauge({
-    name: promPrefix + 'TRADES_THIS_YEAR',
-    help: 'Number of trades for current year',
-    collect() {
-        const data = db.prepare(`
-            select count(*)
-            from stats
-            where year == '${format(new Date(), 'yyyy')}'
-        `).pluck().get();
-        this.set(data || 0);
-    }
-});
-new prom.Gauge({
-    name: promPrefix + 'CARDS_GIVEN_THIS_YEAR',
-    help: 'Number of cards given for current year',
-    collect() {
-        const data = db.prepare(`
-            select sum(given)
-            from stats
-            where year == '${format(new Date(), 'yyyy')}'
-        `).pluck().get();
-        this.set(data || 0);
-    }
-});
-new prom.Gauge({
-    name: promPrefix + 'CARDS_GAINED_THIS_YEAR',
-    help: 'Number of cards gained for current year',
-    collect() {
-        const data = db.prepare(`
-            select sum(gained)
-            from stats
-            where year == '${format(new Date(), 'yyyy')}'
-        `).pluck().get();
-        this.set(data || 0);
-    }
-});
-
-new prom.Gauge({
-    name: promPrefix + 'TRADES_THIS_MONTH',
-    help: 'Number of trades for current month',
-    collect() {
-        const data = db.prepare(`
-            select count(*)
-            from stats
-            where year == '${format(new Date(), 'yyyy')}'
-              and month == '${format(new Date(), 'MM')}'
-        `).pluck().get();
-        this.set(data || 0);
-    }
-});
-new prom.Gauge({
-    name: promPrefix + 'CARDS_GIVEN_THIS_MONTH',
-    help: 'Number of cards given for current month',
-    collect() {
-        const data = db.prepare(`
-            select sum(given)
-            from stats
-            where year == '${format(new Date(), 'yyyy')}'
-              and month == '${format(new Date(), 'MM')}'
-        `).pluck().get();
-        this.set(data || 0);
-    }
-});
-new prom.Gauge({
-    name: promPrefix + 'CARDS_GAINED_THIS_MONTH',
-    help: 'Number of cards gained for current month',
-    collect() {
-        const data = db.prepare(`
-            select sum(gained)
-            from stats
-            where year == '${format(new Date(), 'yyyy')}'
-              and month == '${format(new Date(), 'MM')}'
-        `).pluck().get();
-        this.set(data || 0);
-    }
-});
-
-new prom.Gauge({
-    name: promPrefix + 'TRADES_TODAY',
-    help: 'Number of trades for current day',
-    collect() {
-        const data = db.prepare(`
-            select count(*)
-            from stats
-            where year == '${format(new Date(), 'yyyy')}'
-              and month == '${format(new Date(), 'MM')}'
-              and day == '${format(new Date(), 'dd')}'
-        `).pluck().get();
-        this.set(data || 0);
-    }
-});
-new prom.Gauge({
-    name: promPrefix + 'CARDS_GIVEN_TODAY',
-    help: 'Number of cards given for current day',
-    collect() {
-        const data = db.prepare(`
-            select sum(given)
-            from stats
-            where year == '${format(new Date(), 'yyyy')}'
-              and month == '${format(new Date(), 'MM')}'
-              and day == '${format(new Date(), 'dd')}'
-        `).pluck().get();
-        this.set(data || 0);
-    }
-});
-new prom.Gauge({
-    name: promPrefix + 'CARDS_GAINED_TODAY',
-    help: 'Number of cards gained for current day',
-    collect() {
-        const data = db.prepare(`
-            select sum(gained)
-            from stats
-            where year == '${format(new Date(), 'yyyy')}'
-              and month == '${format(new Date(), 'MM')}'
-              and day == '${format(new Date(), 'dd')}'
-        `).pluck().get();
-        this.set(data || 0);
-    }
-});
-
-const errorCounter = new prom.Counter({
-    name: promPrefix + 'CURRENT_RUN_ERRORS',
-    help: 'Number of errors on current run'
-})
-const reconnectCounter = new prom.Counter({
-    name: promPrefix + 'CURRENT_RUN_RECONNECTS',
-    help: 'Number of reconnects on current run'
-})
-
-// metric end point
-const app = express();
-app.get('/metrics', async (req, res) => {
-    try {
-        res.set('Content-Type', prom.register.contentType);
-        res.end(await prom.register.metrics());
-    } catch (ex) {
-        res.status(500).end(ex);
-    }
-});
-app.listen(appPort, () => logger.info('Server running on port ' + appPort));
-
-// Discord
-const discordWebhookURL = `https://discord.com/api/webhooks/${config.discord_webhook_id}/${config.discord_webhook_token}`;
-let discordMessageBuilder = [];
 
 // Config
 const saleMarketFeeAppIdGive = Array.from(config.sale_market_fee_app_id_give).flatMap(id => String(id));
@@ -364,7 +137,7 @@ steamClient.chat.on('friendMessage', async (msg) => {
 
     logger.info(`Message from ${user.personaname} (${steamID64}) received: '${msg.message}'`);
 
-    upsertMessage.run({
+    logMessage({
         message_id: uniqueId,
         sender_id: steamID64,
         unixtimestemp: msg.server_timestamp.getTime() / 1000,
@@ -373,7 +146,7 @@ steamClient.chat.on('friendMessage', async (msg) => {
 
     await steamClient.chat.sendFriendMessage(msg.steamid_friend, `Please use main account for communication: ${userLinkPart1}${config.steam_main_account}`);
     await steamClient.chat.sendFriendMessage(config.steam_main_account, `Message from ${user.personaname}: '${msg.message}' \n ${userLinkPart1}${steamID64}`);
-})
+});
 
 // Arrays nach Verarbeitung leeren
 function cleanupTradeData() {
@@ -382,7 +155,7 @@ function cleanupTradeData() {
     includesHardBlacklisted = false;
     includesSoftBlacklisted = false;
     saleCardsToGiveValid = true;
-    discordMessageBuilder = [];
+    discordMessageBuilder.length = 0;
 }
 
 manager.on('newOffer', async function (offer) {
@@ -696,24 +469,6 @@ function itemsToText(items) {
 
 function trimItemType(type) {
     return type.replaceAll(" Foil").replaceAll(" Trading Card", "");
-}
-
-function sendDiscordMessage(message) {
-    fetch(discordWebhookURL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        content: message,
-        username: 'SteamTradeBot'
-      })
-    })
-    .then(response => {
-      if (response.ok) logger.info('Discord message send!');
-      else logger.error(`Error while sending Discord message: ${response.statusText}`);
-    })
-    .catch(error => logger.error(error));
 }
 
 async function loadUserFromAccountId(steamId) {
