@@ -1,6 +1,6 @@
 {
   "name": "steamtradebot",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "Steam Trading Bot",
   "main": "index.js",
   "author": "n0eL_1405",
@@ -23,5 +23,10 @@
   "scripts": {
     "start": "pm2 start ecosystem.config.js",
     "stop": "pm2 stop ecosystem.config.js"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.10.0": true,
+    "protobufjs@6.11.6": true,
+    "protobufjs@7.6.3": true
   }
 }
