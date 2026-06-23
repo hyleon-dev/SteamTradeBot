@@ -130,7 +130,7 @@ steamClient.chat.on('friendMessage', async (msg) => {
         return;
     }
 
-    if (msg.message.startsWith(`[tradeoffer sender=${msg.steamid_friend.accountid}`, false) && msg.message.endsWith('[/tradeoffer]', false)) {
+    if (msg.message.startsWith(`[tradeoffer`, false) && msg.message.endsWith('[/tradeoffer]', false)) {
         logger.debug(`Trade offer message from ${steamID64} ignored`);
         return;
     }
