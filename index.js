@@ -9,11 +9,6 @@ const { logOffer, logMessage } = require('./db');
 const { errorCounter, reconnectCounter } = require('./metrics');
 const { discordMessageBuilder, sendDiscordMessage } = require('./discord');
 
-const logAuthPrefix = ""
-const logTradeValidationStepsPrefix = ""
-const logTradeValidationResultPrefix = ""
-const logDebugPrefix = ""
-
 const steamClient = new SteamUser();
 const community = new SteamCommunity();
 const manager = new TradeOfferManager({
@@ -61,13 +56,13 @@ steamClient.logOn(loginDetails);
 
 // Log in
 steamClient.on('loggedOn', () => {
-    logger.info(`${logAuthPrefix} Logged into Steam!`);
+    logger.info(`Logged into Steam`);
     sendDiscordMessage("🤖 Beep boop! I'm alive!")
     steamClient.setPersona(SteamUser.EPersonaState.Online);
 });
 
 steamClient.on("error", function (e) {
-    logger.info(`${logAuthPrefix} Fehler aufgetreten: ${e}`);
+    logger.error(`Steam client error: ${e}`);
     errorCounter.inc(); // Fehler zählen
 
     // Nur bei kritischen Fehlern beenden
@@ -83,14 +78,15 @@ steamClient.on("error", function (e) {
 
 // If last Steam Guard Code was wrong, here a new one is created
 steamClient.on("steamGuard", function (domain, callback, lastCodeWrong) {
+    const steamGuardWaitTime = 31;
     if (lastCodeWrong) {
-        logger.info(`${logAuthPrefix} Last code wrong, try again!`);
+        logger.warn(`Last Steam Guard Code was incorrect, retrying in ${steamGuardWaitTime} seconds`);
     } else {
-        logger.info(`${logAuthPrefix} Authorized with Steam Guard Code.`)
+        logger.info(`Generating new Steam Guard Code`)
     }
     setTimeout(function () {
         callback(SteamTotp.generateAuthCode(config.steam_shared_secret));
-    }, 31000);
+    }, steamGuardWaitTime * 1000);
 });
 
 steamClient.on('webSession', (sessionid, cookies) => {
@@ -100,13 +96,13 @@ steamClient.on('webSession', (sessionid, cookies) => {
 
 steamClient.on('connected', () => {
     wasConnected = true;
-    logger.info(`${logAuthPrefix} Verbindung hergestellt`);
+    logger.info(`Connected to Steam`);
 
 });
 
 steamClient.on('disconnected', () => {
     if (wasConnected) {
-        logger.info(`${logAuthPrefix} Verbindung verloren - versuche Reconnect`);
+        logger.info(`Connection lost, trying to reconnect`);
         sendDiscordMessage("🤖 Beep boop! Good night!")
         // Kurz warten und dann neu anmelden
         setTimeout(() => {
@@ -130,7 +126,7 @@ steamClient.chat.on('friendMessage', async (msg) => {
         return;
     }
 
-    if (msg.message.startsWith(`[tradeoffer`, false) && msg.message.endsWith('[/tradeoffer]', false)) {
+    if (msg.message.startsWith('[tradeoffer') && msg.message.endsWith('[/tradeoffer]')) {
         logger.debug(`Trade offer message from ${steamID64} ignored`);
         return;
     }
@@ -163,7 +159,7 @@ manager.on('newOffer', async function (offer) {
     const partnerSteamId = SteamID.fromIndividualAccountID(offer.partner.accountid);
     let tradePartner = await loadUserFromAccountId(partnerSteamId.getSteamID64());
 
-    logger.info(`${logTradeValidationStepsPrefix} start of offer validation for ${offer.id} from ${tradePartner.personaname} (${tradePartner.steamid})`)
+    logger.info(`Start of offer validation for ${offer.id} from ${tradePartner.personaname} (${tradePartner.steamid})`)
     discordMessageBuilder.push(`🆕 Offer from ${tradePartner.personaname} received.`);
     discordMessageBuilder.push('\n')
 
@@ -175,19 +171,19 @@ manager.on('newOffer', async function (offer) {
     discordMessageBuilder.push(`⬅️ The Bot will give ${itemsToGive.length} cards`)
     discordMessageBuilder.push('\n')
 
-    logger.debug(`${logDebugPrefix} itemsToReceive: (${itemsToReceive.length}) ${itemsToText(itemsToReceive)}`)
-    logger.debug(`${logDebugPrefix} itemsToGive: (${itemsToGive.length}) ${itemsToText(itemsToGive)}`)
+    logger.debug(`ItemsToReceive: (${itemsToReceive.length}) ${itemsToText(itemsToReceive)}`)
+    logger.debug(`ItemsToGive: (${itemsToGive.length}) ${itemsToText(itemsToGive)}`)
 
     // check if offer only contains trading cards
     let itemsToReceiveAreTradingCards = offer.itemsToReceive.every(item => {
         return item.tags.find(tag => tag.name === "Trading Card") != null
     });
-    logger.debug(`${logDebugPrefix} itemsToReceiveAreTradingCards: ${itemsToReceiveAreTradingCards}`)
+    logger.debug(`All received items are trading cards: ${itemsToReceiveAreTradingCards}`)
 
     let itemsToGiveAreTradingCards = offer.itemsToGive.every(item => {
         return item.tags.find(tag => tag.name === "Trading Card") != null
     });
-    logger.debug(`${logDebugPrefix} itemsToGiveAreTradingCards: ${itemsToGiveAreTradingCards}`)
+    logger.debug(`All given items are trading cards: ${itemsToGiveAreTradingCards}`)
 
     if (!itemsToReceiveAreTradingCards || !itemsToGiveAreTradingCards) return
 
@@ -206,7 +202,7 @@ manager.on('newOffer', async function (offer) {
             }
         } else {
             includesHardBlacklisted = true;
-            logger.info(`${logTradeValidationStepsPrefix} Hard Blacklisted game to give found: ${itemToGive.market_fee_app}`);
+            logger.warn(`Hard blacklisted game to give found: ${itemToGive.market_fee_app}`);
         }
     })
 
@@ -221,17 +217,17 @@ manager.on('newOffer', async function (offer) {
             }
         } else {
             includesHardBlacklisted = true;
-            logger.info(`${logTradeValidationStepsPrefix} Hard Blacklisted game to get found: ${itemToReceive.market_fee_app}`);
+            logger.warn(`Hard blacklisted game to get found: ${itemToReceive.market_fee_app}`);
         }
     });
 
-    logger.debug(`${logDebugPrefix} includesHardBlacklisted: ${includesHardBlacklisted}`)
+    logger.debug(`Trade includes hard blacklisted items: ${includesHardBlacklisted}`)
     discordMessageBuilder.push('↔️ Following trades will be made:')
 
     // sorting out 1:1 trades
     itemsToGiveMap.forEach((items, key) => {
         if (itemsToReceiveMap.has(key) && items.length === itemsToReceiveMap.get(key).length) {
-            logger.info(`${logTradeValidationStepsPrefix} found 1:1 trade for game ${key}`);
+            logger.info(`Found 1:1 trade for game ${key}`);
 
             for (let i = 0; i < items.length; i++) {
                 discordMessageBuilder.push(`➡️ ${itemsToReceiveMap.get(key)[i].name} (${trimItemType(items[i].type)}) \n⬅️ ${items[i].name} (${trimItemType(items[i].type)}) \n`);
@@ -241,7 +237,7 @@ manager.on('newOffer', async function (offer) {
             itemsToGiveMap.delete(key);
 
         } else if (itemsToReceiveMap.has(key) && items.length < itemsToReceiveMap.get(key).length) {
-            logger.info(`${logTradeValidationStepsPrefix} found more items for game ${key} (${items.length} items to give and ${itemsToReceiveMap.get(key).length} items to receive)`);
+            logger.info(`Found more items for game ${key} (${items.length} items to give and ${itemsToReceiveMap.get(key).length} items to receive)`);
 
             // for every given item, one item to get is removed
             const popedItems = [];
@@ -265,7 +261,7 @@ manager.on('newOffer', async function (offer) {
                 itemsToGive.push(item);
                 } else {
                     includesSoftBlacklisted = true;
-                    logger.info(`${logTradeValidationStepsPrefix} Soft Blacklisted game to give found: ${item.market_fee_app}`);
+                    logger.warn(`Soft blacklisted game to give found: ${item.market_fee_app}`);
                 }
             });
     });
@@ -277,34 +273,28 @@ manager.on('newOffer', async function (offer) {
                 itemsToReceive.push(item);
             } else {
                 includesSoftBlacklisted = true;
-                logger.info(`${logTradeValidationStepsPrefix} Soft Blacklisted game to get found: ${item.market_fee_app}`);
+                logger.warn(`Soft blacklisted game to get found: ${item.market_fee_app}`);
             }
         });
     });
 
-    logger.debug(`${logDebugPrefix} includesSoftBlacklisted: ${includesSoftBlacklisted}`)
+    logger.debug(`Trade includes soft blacklisted items: ${includesSoftBlacklisted}`)
 
     // removes cards for special sale cards condition
-    logger.debug(`${logDebugPrefix} saleMarketFeeAppIdGet: ${saleMarketFeeAppIdGet}`)
+    logger.debug(`SaleMarketFeeAppIdGet: ${saleMarketFeeAppIdGet}`)
     if (saleMarketFeeAppIdGet !== undefined && saleMarketFeeAppIdGet !== null && saleMarketFeeAppIdGet !== "") {
 
-        logger.debug(`${logDebugPrefix} itemsToReceive: (${itemsToReceive.length}) ${itemsToText(itemsToReceive)}`)
         itemsToReceive.forEach(item => {
-            logger.debug(`${logDebugPrefix} item: ${item.market_name} (${item.type})`)
-
             const itemIsSaleItem = item.market_fee_app === saleMarketFeeAppIdGet
-            logger.debug(`${logDebugPrefix} itemIsSaleItem: ${itemIsSaleItem}`)
+            logger.debug(`Checking sale item to receive: ${item.market_name} — is sale item: ${itemIsSaleItem}`)
             if (itemIsSaleItem) {
                 specialCardGet(item, offer);
             }
         })
 
-        logger.debug(`${logDebugPrefix} saleMarketFeeAppIdGive: ${saleMarketFeeAppIdGive}`)
         itemsToGive.forEach(item => {
-            logger.debug(`${logDebugPrefix} item: ${item}`)
-
             const itemIsSaleItem = saleMarketFeeAppIdGive.filter(id => id === item.market_fee_app).length >> 0 && saleCardsToGiveValid
-            logger.debug(`${logDebugPrefix} itemIsSaleItem: ${itemIsSaleItem}`)
+            logger.debug(`Checking sale item to give: ${item.market_name} — is sale item: ${itemIsSaleItem}`)
             if (itemIsSaleItem) {
                 specialCardGive(item, offer);
             }
@@ -328,20 +318,15 @@ manager.on('newOffer', async function (offer) {
         item.tags.find(tag => tag.category === "cardborder")
             .internal_name === "cardborder_1").length
 
-    itemsToGive.forEach(item => {
-        logger.info(`Card to give left: ${item.market_name} (${item.type})`)
-    })
-
-    itemsToReceive.forEach(item => {
-        logger.info(`Card to receive left: ${item.market_name} (${item.type})`)
-    })
+    logger.debug(`Cards to give after filtering: ${itemsToText(itemsToGive)}`)
+    logger.debug(`Cards to receive after filtering: ${itemsToText(itemsToReceive)}`)
 
     logger.info(`${normalCardsToGive} cards to give and ${normalCardsToReceive} cards to receive left.`);
     logger.info(`${foilCardsToGive} foil cards to give and ${foilCardsToReceive} foil cards to receive left.`);
 
     var crossSetItemCountValid = (normalCardsToGive !== undefined && normalCardsToGive * 2 <= normalCardsToReceive)
         && (foilCardsToGive !== undefined && foilCardsToGive * 2 <= foilCardsToReceive);
-    logger.debug(`${logDebugPrefix} crossSetItemCountValid: ${crossSetItemCountValid}`);
+    logger.debug(`Cross-set item ratio valid: ${crossSetItemCountValid} (normal: ${normalCardsToGive}:${normalCardsToReceive}, foil: ${foilCardsToGive}:${foilCardsToReceive})`);
 
     if (crossSetItemCountValid) {
         for (let i = 0; i < itemsToGive.length; i++) {
@@ -350,12 +335,12 @@ manager.on('newOffer', async function (offer) {
     }
 
     const tradeAcceptCondition = itemsToReceiveAreTradingCards && (itemsToGiveAreTradingCards || itemsToGive.length === 0) && (crossSetItemCountValid || itemsToGive.length === 0) && saleCardsToGiveValid && !includesHardBlacklisted && !includesSoftBlacklisted;
-    logger.debug(`${logDebugPrefix} tradeAcceptCondition: ${tradeAcceptCondition}`);
+    logger.debug(`Trade will be accepted: ${tradeAcceptCondition}`);
     if (tradeAcceptCondition) {
         discordMessageBuilder.push('✅ Trade will be accepted!');
         acceptOffer(offer);
     } else {
-        logger.info(`${logTradeValidationResultPrefix} Can't validate offer ${offer.id}, please check manually`);
+        logger.warn(`Can't validate offer ${offer.id}, please check manually`);
         discordMessageBuilder.push('❌ Trade will not be accepted! Please check manually.');
 
         if (!itemsToReceiveAreTradingCards || (!itemsToGiveAreTradingCards && itemsToGive > 0)) discordMessageBuilder.push('🔴 Found something other then trading card in trade.');
@@ -365,7 +350,7 @@ manager.on('newOffer', async function (offer) {
         if (includesSoftBlacklisted) discordMessageBuilder.push('🔴 Cross trading contains soft blacklisted game');
     }
     sendDiscordMessage(discordMessageBuilder.join('\n'));
-    logger.info(`${logTradeValidationStepsPrefix} end of offer validation for ${offer.id}`);
+    logger.info(`End of offer validation for ${offer.id}`);
     cleanupTradeData();
 });
 
@@ -377,7 +362,7 @@ function acceptOffer(offer) {
             // if session is expired and error has been thrown
             reconnectCounter.inc(); // Reconnect nach Session-Timeout zählen
 
-            logger.info(`${logAuthPrefix} Session timed out. Re-login`)
+            logger.warn(`Session timed out, re-logging in`)
             // first log properly off
             steamClient.logOff()
             // second login again
@@ -390,12 +375,12 @@ function acceptOffer(offer) {
 
         } else {
 
-            logger.info(`${logTradeValidationResultPrefix} Accepted offer ${offer.id}.`);
+            logger.info(`Offer ${offer.id} accepted by bot (awaiting Mobile confirmation)`);
             community.acceptConfirmationForObject(identitySecret, offer.id, (err, status) => {
                 if (err) {
-                    logger.error(err)
+                    logger.error(`Failed to confirm offer ${offer.id}: ${err}`)
                 } else {
-                    logger.info(`${logTradeValidationResultPrefix} Confirmed offer ${offer.id}.`);
+                    logger.info(`Offer ${offer.id} confirmed via Steam Guard Mobile Authenticator`);
                     logOffer(offer);
                 }
             });
@@ -408,27 +393,26 @@ function specialCardGet(itemToGet, offer) {
     let itemsToGiveOfGameInTrade = itemsToGive.filter(item =>
         item.market_fee_app !== itemToGet.market_fee_app
         && item.tags.find(tag => tag.category === "cardborder").internal_name === itemToGet.tags.find(tag => tag.category === "cardborder").internal_name);
-    logger.debug(`${logDebugPrefix} itemsToGiveOfGameInTrade: (${itemsToGiveOfGameInTrade.length}) ${itemsToText(itemsToGiveOfGameInTrade)}`)
+    logger.debug(`ItemsToGiveOfGameInTrade: (${itemsToGiveOfGameInTrade.length}) ${itemsToText(itemsToGiveOfGameInTrade)}`)
 
     let itemsToReceiveOfGameInTrade = itemsToReceive.filter(item =>
         item.market_fee_app === itemToGet.market_fee_app
         && item.tags.find(tag => tag.category === "cardborder").internal_name === itemToGet.tags.find(tag => tag.category === "cardborder").internal_name);
-    logger.debug(`${logDebugPrefix} itemsToReceiveOfGameInTrade: (${itemsToReceiveOfGameInTrade.length}) ${itemsToText(itemsToReceiveOfGameInTrade)}`)
+    logger.debug(`ItemsToReceiveOfGameInTrade: (${itemsToReceiveOfGameInTrade.length}) ${itemsToText(itemsToReceiveOfGameInTrade)}`)
 
     // get 1 special card, give 2 non-special cards
     const conditionsToGiveSpecialCard = (itemsToReceiveOfGameInTrade.length >= 1 && itemsToGiveOfGameInTrade.length >= 2) && itemsToGiveOfGameInTrade.length <= itemsToReceiveOfGameInTrade.length * 2;
-    logger.debug(`${logDebugPrefix} conditionsToGiveSpecialCard: ${conditionsToGiveSpecialCard}`)
+    logger.debug(`ConditionsToGiveSpecialCard: ${conditionsToGiveSpecialCard}`)
     if (conditionsToGiveSpecialCard) {
         for (var i = 0; i < itemsToReceiveOfGameInTrade.length * 2; i++) {
             itemsToGive.splice(itemsToGive.indexOf(itemsToGiveOfGameInTrade.at(i)), 1)
-            logger.info(`Sorted card to give out: ${itemsToGiveOfGameInTrade.at(i).market_name} (${itemsToGiveOfGameInTrade.at(i).type})`)
+            logger.debug(`Excluded from trade (sale card rule): ${itemsToGiveOfGameInTrade.at(i).market_name} (${itemsToGiveOfGameInTrade.at(i).type})`)
         }
         for (var j = 0; j < itemsToReceiveOfGameInTrade.length; j++) {
             itemsToReceive.splice(itemsToReceive.indexOf(itemsToReceiveOfGameInTrade.at(j)), 1)
-            logger.info(`Sorted card to receive out: ${itemsToReceiveOfGameInTrade.at(j).market_name} (${itemsToReceiveOfGameInTrade.at(j).type})`)
+            logger.debug(`Excluded from trade (sale card rule): ${itemsToReceiveOfGameInTrade.at(j).market_name} (${itemsToReceiveOfGameInTrade.at(j).type})`)
         }
-        logger.info(`${i} sale cards to give and ${j} sale cards to receive sorted out.`)
-        logger.info(`${logTradeValidationStepsPrefix}`)
+        logger.info(`${i} sale cards to give and ${j} sale cards to receive excluded from trade`)
     }
 }
 
@@ -437,27 +421,26 @@ function specialCardGive(itemToGive, offer) {
     let itemsToGiveOfGameInTrade = itemsToGive.filter(item =>
         item.market_fee_app === itemToGive.market_fee_app
         && item.tags.find(tag => tag.category === "cardborder").internal_name === itemToGive.tags.find(tag => tag.category === "cardborder").internal_name);
-    logger.debug(`${logDebugPrefix} itemsToGiveOfGameInTrade: (${itemsToGiveOfGameInTrade.length}) ${itemsToText(itemsToGiveOfGameInTrade)}`)
+    logger.debug(`ItemsToGiveOfGameInTrade: (${itemsToGiveOfGameInTrade.length}) ${itemsToText(itemsToGiveOfGameInTrade)}`)
 
     let itemsToReceiveOfGameInTrade = itemsToReceive.filter(item =>
         item.market_fee_app !== itemToGive.market_fee_app
         && item.tags.find(tag => tag.category === "cardborder").internal_name === itemToGive.tags.find(tag => tag.category === "cardborder").internal_name);
-    logger.debug(`${logDebugPrefix} itemsToReceiveOfGameInTrade: (${itemsToReceiveOfGameInTrade.length}) ${itemsToText(itemsToReceiveOfGameInTrade)}`)
+    logger.debug(`ItemsToReceiveOfGameInTrade: (${itemsToReceiveOfGameInTrade.length}) ${itemsToText(itemsToReceiveOfGameInTrade)}`)
 
     // give 1 special card, receive 3 non-special cards
     const conditionsToGiveSpecialCard = (itemsToReceiveOfGameInTrade.length >= 3 && itemsToGiveOfGameInTrade.length >= 1) && itemsToGiveOfGameInTrade.length * 3 <= itemsToReceiveOfGameInTrade.length;
-    logger.debug(`${logDebugPrefix} conditionsToGiveSpecialCard: ${conditionsToGiveSpecialCard}`)
+    logger.debug(`ConditionsToGiveSpecialCard: ${conditionsToGiveSpecialCard}`)
     if (conditionsToGiveSpecialCard) {
         for (var i = 0; i < itemsToGiveOfGameInTrade.length; i++) {
             itemsToGive.splice(itemsToGive.indexOf(itemsToGiveOfGameInTrade.at(i)), 1)
-            logger.info(`Sorted card to give out: ${itemsToGiveOfGameInTrade.at(i).market_name} (${itemsToGiveOfGameInTrade.at(i).type})`)
+            logger.debug(`Excluded from trade (sale card rule): ${itemsToGiveOfGameInTrade.at(i).market_name} (${itemsToGiveOfGameInTrade.at(i).type})`)
         }
         for (var j = 0; j < itemsToGiveOfGameInTrade.length * 3; j++) {
             itemsToReceive.splice(itemsToReceive.indexOf(itemsToReceiveOfGameInTrade.at(j)), 1)
-            logger.info(`Sorted card to receive out: ${itemsToReceiveOfGameInTrade.at(j).market_name} (${itemsToReceiveOfGameInTrade.at(j).type})`)
+            logger.debug(`Excluded from trade (sale card rule): ${itemsToReceiveOfGameInTrade.at(j).market_name} (${itemsToReceiveOfGameInTrade.at(j).type})`)
         }
-        logger.info(`${i} sale cards to give and ${j} sale cards to receive sorted out.`)
-        logger.info(`${logTradeValidationStepsPrefix}`)
+        logger.info(`${i} sale cards to give and ${j} sale cards to receive excluded from trade`)
     } else {
         saleCardsToGiveValid = false;
     }
