@@ -192,8 +192,8 @@ manager.on('newOffer', async function (offer) {
 
     // put items to give in Map
     // hard blacklisting: every trade with these games will not be accepted automatically
+    const hardBlacklistedGamesToGive = [];
     itemsToGive.forEach(itemToGive => {
-        const hardBlacklistedGames = [];
         if (!hardBlacklist.give.includes(itemToGive.market_fee_app)) {
             const appAndBorder = itemToGive.market_fee_app + "_" + itemToGive.tags.find(tag => tag.category === "cardborder").name;
             if (itemsToGiveMap.has(appAndBorder)) {
@@ -203,15 +203,17 @@ manager.on('newOffer', async function (offer) {
             }
         } else {
             includesHardBlacklisted = true;
-            if (!hardBlacklistedGames.includes(itemToGive.market_fee_app)) { hardBlacklistedGames.push(itemToGive.market_fee_app); }
+            if (!hardBlacklistedGamesToGive.includes(itemToGame(itemToGive))) { hardBlacklistedGamesToGive.push(itemToGame(itemToGive)); }
             logger.warn(`Hard blacklisted game to give found: ${itemToGive.market_fee_app}`);
         }
-        discordMessageBuilder.push(`🚩 Hard blacklisted ${hardBlacklistedGames.length === 1 ? 'game' : 'games'} to give found: ${hardBlacklistedGames.join(', ')}`);
     })
+    if (hardBlacklistedGamesToGive.length > 0) {
+        discordMessageBuilder.push(`🚩 Hard blacklisted ${hardBlacklistedGamesToGive.length === 1 ? 'game' : 'games'} to give found: ${hardBlacklistedGamesToGive.join(', ')} \n`);
+    }
 
     // put items to receive in Map
+    const hardBlacklistedGamesToReceive = [];
     itemsToReceive.forEach(itemToReceive => {
-        const hardBlacklistedGames = [];
         if (!hardBlacklist.get.includes(itemToReceive.market_fee_app)) {
             const appAndBorder = itemToReceive.market_fee_app + "_" + itemToReceive.tags.find(tag => tag.category === "cardborder").name;
             if (itemsToReceiveMap.has(appAndBorder)) {
@@ -221,11 +223,13 @@ manager.on('newOffer', async function (offer) {
             }
         } else {
             includesHardBlacklisted = true;
-            if (!hardBlacklistedGames.includes(itemToReceive.market_fee_app)) { hardBlacklistedGames.push(itemToReceive.market_fee_app); }
+            if (!hardBlacklistedGamesToReceive.includes(itemToGame(itemToReceive))) { hardBlacklistedGamesToReceive.push(itemToGame(itemToReceive)); }
             logger.warn(`Hard blacklisted game to get found: ${itemToReceive.market_fee_app}`);
         }
-        discordMessageBuilder.push(`🚩 Hard blacklisted ${hardBlacklistedGames.length === 1 ? 'game' : 'games'} to get found: ${hardBlacklistedGames.join(', ')}`);
     });
+    if (hardBlacklistedGamesToReceive.length > 0) {
+        discordMessageBuilder.push(`🚩 Hard blacklisted ${hardBlacklistedGamesToReceive.length === 1 ? 'game' : 'games'} to get found: ${hardBlacklistedGamesToReceive.join(', ')} \n`);
+    }
 
     logger.debug(`Trade includes hard blacklisted items: ${includesHardBlacklisted}`)
     discordMessageBuilder.push('↔️ Following trades will be made:')
@@ -261,34 +265,38 @@ manager.on('newOffer', async function (offer) {
 
     // soft blacklisting: X:X trading is accepted automatically, X:(X*2) trading is not
     itemsToGive = [];
+    const softBlacklistedGamesToGive = [];
     itemsToGiveMap.forEach(items => {
-        const softBlacklistedGames = [];
         items.forEach(item => {
             if (!softBlacklist.give.includes(item.market_fee_app)) {
                 itemsToGive.push(item);
             } else {
                 includesSoftBlacklisted = true;
-                if (!softBlacklistedGames.includes(item.market_fee_app)) { softBlacklistedGames.push(item.market_fee_app); }
+                if (!softBlacklistedGamesToGive.includes(itemToGame(item))) { softBlacklistedGamesToGive.push(itemToGame(item)); }
                 logger.warn(`Soft blacklisted game to give found: ${item.market_fee_app}`);
             }
         });
-        discordMessageBuilder.push(`🚩 Soft blacklisted ${softBlacklistedGames.length === 1 ? 'game' : 'games'} to give found: ${softBlacklistedGames.join(', ')}`);
     });
+    if (softBlacklistedGamesToGive.length > 0) {
+        discordMessageBuilder.push(`🚩 Soft blacklisted ${softBlacklistedGamesToGive.length === 1 ? 'game' : 'games'} to give found: ${softBlacklistedGamesToGive.join(', ')} \n`);
+    }
 
     itemsToReceive = [];
+    const softBlacklistedGamesToReceive = [];
     itemsToReceiveMap.forEach(items => {
-        const softBlacklistedGames = [];
         items.forEach(item => {
             if (!softBlacklist.get.includes(item.market_fee_app)) {
                 itemsToReceive.push(item);
             } else {
                 includesSoftBlacklisted = true;
-                if (!softBlacklistedGames.includes(item.market_fee_app)) { softBlacklistedGames.push(item.market_fee_app); }
+                if (!softBlacklistedGamesToReceive.includes(itemToGame(item))) { softBlacklistedGamesToReceive.push(itemToGame(item)); }
                 logger.warn(`Soft blacklisted game to get found: ${item.market_fee_app}`);
             }
         });
-        discordMessageBuilder.push(`🚩 Soft blacklisted ${softBlacklistedGames.length === 1 ? 'game' : 'games'} to get found: ${softBlacklistedGames.join(', ')}`);
     });
+    if (softBlacklistedGamesToReceive.length > 0) {
+        discordMessageBuilder.push(`🚩 Soft blacklisted ${softBlacklistedGamesToReceive.length === 1 ? 'game' : 'games'} to get found: ${softBlacklistedGamesToReceive.join(', ')} \n`);
+    }
 
     logger.debug(`Trade includes soft blacklisted items: ${includesSoftBlacklisted}`)
 
@@ -460,6 +468,10 @@ function specialCardGive(itemToGive, offer) {
 
 function itemsToText(items) {
     return `[${items.map(item => `'${item.market_name} (${item.type})'`)}]`;
+}
+
+function itemToGame(item) {
+    return item.type.replaceAll(" Foil", "").replaceAll(" Trading Card", "");
 }
 
 function trimItemType(type) {
