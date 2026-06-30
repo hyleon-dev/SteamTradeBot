@@ -193,6 +193,7 @@ manager.on('newOffer', async function (offer) {
     // put items to give in Map
     // hard blacklisting: every trade with these games will not be accepted automatically
     itemsToGive.forEach(itemToGive => {
+        const hardBlacklistedGames = [];
         if (!hardBlacklist.give.includes(itemToGive.market_fee_app)) {
             const appAndBorder = itemToGive.market_fee_app + "_" + itemToGive.tags.find(tag => tag.category === "cardborder").name;
             if (itemsToGiveMap.has(appAndBorder)) {
@@ -202,12 +203,15 @@ manager.on('newOffer', async function (offer) {
             }
         } else {
             includesHardBlacklisted = true;
+            if (!hardBlacklistedGames.includes(itemToGive.market_fee_app)) { hardBlacklistedGames.push(itemToGive.market_fee_app); }
             logger.warn(`Hard blacklisted game to give found: ${itemToGive.market_fee_app}`);
         }
+        discordMessageBuilder.push(`🚩 Hard blacklisted ${hardBlacklistedGames.length === 1 ? 'game' : 'games'} to give found: ${hardBlacklistedGames.join(', ')}`);
     })
 
     // put items to receive in Map
     itemsToReceive.forEach(itemToReceive => {
+        const hardBlacklistedGames = [];
         if (!hardBlacklist.get.includes(itemToReceive.market_fee_app)) {
             const appAndBorder = itemToReceive.market_fee_app + "_" + itemToReceive.tags.find(tag => tag.category === "cardborder").name;
             if (itemsToReceiveMap.has(appAndBorder)) {
@@ -217,8 +221,10 @@ manager.on('newOffer', async function (offer) {
             }
         } else {
             includesHardBlacklisted = true;
+            if (!hardBlacklistedGames.includes(itemToReceive.market_fee_app)) { hardBlacklistedGames.push(itemToReceive.market_fee_app); }
             logger.warn(`Hard blacklisted game to get found: ${itemToReceive.market_fee_app}`);
         }
+        discordMessageBuilder.push(`🚩 Hard blacklisted ${hardBlacklistedGames.length === 1 ? 'game' : 'games'} to get found: ${hardBlacklistedGames.join(', ')}`);
     });
 
     logger.debug(`Trade includes hard blacklisted items: ${includesHardBlacklisted}`)
@@ -256,26 +262,32 @@ manager.on('newOffer', async function (offer) {
     // soft blacklisting: X:X trading is accepted automatically, X:(X*2) trading is not
     itemsToGive = [];
     itemsToGiveMap.forEach(items => {
-            items.forEach(item => {
-                if (!softBlacklist.give.includes(item.market_fee_app)) {
+        const softBlacklistedGames = [];
+        items.forEach(item => {
+            if (!softBlacklist.give.includes(item.market_fee_app)) {
                 itemsToGive.push(item);
-                } else {
-                    includesSoftBlacklisted = true;
-                    logger.warn(`Soft blacklisted game to give found: ${item.market_fee_app}`);
-                }
-            });
+            } else {
+                includesSoftBlacklisted = true;
+                if (!softBlacklistedGames.includes(item.market_fee_app)) { softBlacklistedGames.push(item.market_fee_app); }
+                logger.warn(`Soft blacklisted game to give found: ${item.market_fee_app}`);
+            }
+        });
+        discordMessageBuilder.push(`🚩 Soft blacklisted ${softBlacklistedGames.length === 1 ? 'game' : 'games'} to give found: ${softBlacklistedGames.join(', ')}`);
     });
 
     itemsToReceive = [];
     itemsToReceiveMap.forEach(items => {
+        const softBlacklistedGames = [];
         items.forEach(item => {
             if (!softBlacklist.get.includes(item.market_fee_app)) {
                 itemsToReceive.push(item);
             } else {
                 includesSoftBlacklisted = true;
+                if (!softBlacklistedGames.includes(item.market_fee_app)) { softBlacklistedGames.push(item.market_fee_app); }
                 logger.warn(`Soft blacklisted game to get found: ${item.market_fee_app}`);
             }
         });
+        discordMessageBuilder.push(`🚩 Soft blacklisted ${softBlacklistedGames.length === 1 ? 'game' : 'games'} to get found: ${softBlacklistedGames.join(', ')}`);
     });
 
     logger.debug(`Trade includes soft blacklisted items: ${includesSoftBlacklisted}`)
