@@ -13,7 +13,6 @@ function card(appId, border = 'cardborder_0', name = 'Test Card') {
     return new TradeItem({
         appId: String(appId),
         name: name,
-        marketName: `Game${appId} - ${name}`,
         type: `Game${appId} Trading Card`,
         border,
         isTradingCard: true
@@ -25,7 +24,6 @@ function nonCard(appId) {
     return new TradeItem({
         appId: String(appId),
         name: 'Some Item',
-        marketName: 'Game - Some Item',
         type: 'Some Item Type',
         border: 'cardborder_0',
         isTradingCard: false
