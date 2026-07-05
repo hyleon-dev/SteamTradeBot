@@ -1,8 +1,7 @@
-const config = require('./config.json');
+const config = require('./config');
 const logger = require('./logger');
 
 const discordWebhookURL = `https://discord.com/api/webhooks/${config.discord_webhook_id}/${config.discord_webhook_token}`;
-let discordMessageBuilder = [];
 
 function sendDiscordMessage(message) {
     fetch(discordWebhookURL, {
@@ -22,4 +21,4 @@ function sendDiscordMessage(message) {
     .catch(error => logger.error(error));
 }
 
-module.exports = { discordMessageBuilder, sendDiscordMessage };
+module.exports = { sendDiscordMessage };

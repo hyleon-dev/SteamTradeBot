@@ -1,6 +1,6 @@
 const prom = require('prom-client');
 const express = require('express');
-const config = require('./config.json');
+const config = require('./config');
 const {format} = require("date-fns");
 const logger = require('./logger');
 const { db } = require('./db');
