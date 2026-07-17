@@ -48,13 +48,16 @@ const logger = createLogger({
     new DailyRotateFile({
       filename: 'logs/crash-%DATE%.log',
       datePattern: 'YYYY-MM-DD'
-    })
+    }),
+    // Crashes auch im Terminal zeigen, nicht nur im crash-Log
+    new transports.Console()
   ],
   rejectionHandlers: [
     new DailyRotateFile({
       filename: 'logs/crash-%DATE%.log',
       datePattern: 'YYYY-MM-DD'
-    })
+    }),
+    new transports.Console()
   ]
 });
 

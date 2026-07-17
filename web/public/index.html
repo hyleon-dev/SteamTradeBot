@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SteamTradeBot</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+<header>
+  <h1>🤖 SteamTradeBot</h1>
+  <nav id="tabs">
+    <button class="tab active" data-tab="dashboard">Dashboard</button>
+    <button class="tab" data-tab="trades">Trades</button>
+    <button class="tab" data-tab="config">Config</button>
+    <button class="tab" data-tab="status">Status</button>
+  </nav>
+</header>
+
+<main>
+  <section id="dashboard" class="panel active">
+    <div class="tiles" id="tiles"></div>
+    <div class="chart-row">
+      <div class="chart-box">
+        <canvas id="tradesChart"></canvas>
+      </div>
+      <div class="chart-box">
+        <canvas id="cardsChart"></canvas>
+      </div>
+    </div>
+    <div class="controls">
+      <label>Gruppierung:
+        <select id="groupBy">
+          <option value="day">Tag</option>
+          <option value="week">Woche</option>
+          <option value="month">Monat</option>
+        </select>
+      </label>
+    </div>
+  </section>
+
+  <section id="trades" class="panel">
+    <div class="controls">
+      <label>Filter:
+        <select id="tradeFilter">
+          <option value="">Alle</option>
+          <option value="true">Angenommen</option>
+          <option value="false">Abgelehnt</option>
+        </select>
+      </label>
+      <button id="reloadTrades">Aktualisieren</button>
+    </div>
+    <table id="tradesTable">
+      <thead>
+      <tr>
+        <th>Zeit</th>
+        <th>Partner</th>
+        <th>Erhalten</th>
+        <th>Gegeben</th>
+        <th>Status</th>
+        <th>Grund</th>
+      </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section id="config" class="panel">
+    <p class="hint">Felder mit <span class="badge restart">Neustart</span> werden erst nach einem Neustart aktiv. Secret-Felder leer lassen, um den bestehenden Wert zu behalten.</p>
+    <form id="configForm">
+      <div id="configFields"></div>
+      <button type="submit">Speichern</button>
+      <span id="configMsg"></span>
+    </form>
+  </section>
+
+  <section id="status" class="panel">
+    <div id="statusInfo"></div>
+    <button id="reloadStatus">Aktualisieren</button>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

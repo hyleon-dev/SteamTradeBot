@@ -5,8 +5,10 @@ const TradeOfferManager = require('steam-tradeoffer-manager');
 const SteamID = require('steamid');
 const config = require('./config');
 const logger = require('./logger');
-const { db, logOffer, logMessage } = require('./db');
+const state = require('./state');
+const { db, logOffer, logMessage, logTrade } = require('./db');
 const { errorCounter, reconnectCounter } = require('./metrics');
+const { startServer } = require('./web/server');
 const { sendDiscordMessage } = require('./discord');
 const { mapSteamOffer, validateOffer, itemsToText } = require('./utils');
 
@@ -30,15 +32,23 @@ const identitySecret = config.steam_identity_secret;
 const pushURL = `${config.uptimekuma_url}/api/push/${config.uptimekuma_key}?status=up&msg=OK&ping=`;
 const heartbeat = async () => {
     await fetch(pushURL);
+    state.set({ lastHeartbeat: Date.now() });
 };
 heartbeat();
 setInterval(heartbeat, 60 * 1000);
 
-// Config
-const saleMarketFeeAppIdGive = Array.from(config.sale_market_fee_app_id_give).flatMap(id => String(id));
-const saleMarketFeeAppIdGet = config.sale_market_fee_app_id_get;
-const hardBlacklist = { get: Array.from(config.do_not_get_hard).flatMap(id => String(id)), give: Array.from(config.do_not_give_hard).flatMap(id => String(id)) };
-const softBlacklist = { get: Array.from(config.do_not_get_soft).flatMap(id => String(id)), give: Array.from(config.do_not_give_soft).flatMap(id => String(id)) };
+// Web-/Metrics-Server starten (Dashboard nur wenn WEB_UI_ENABLED, /metrics immer)
+startServer();
+
+// Handel-Regeln bei jedem Offer frisch aus der Config lesen (unterstützt Hot-Reload)
+function getTradeRules() {
+    return {
+        saleMarketFeeAppIdGive: config.sale_market_fee_app_id_give.map(String),
+        saleMarketFeeAppIdGet: config.sale_market_fee_app_id_get,
+        hardBlacklist: { get: config.do_not_get_hard.map(String), give: config.do_not_give_hard.map(String) },
+        softBlacklist: { get: config.do_not_get_soft.map(String), give: config.do_not_give_soft.map(String) },
+    };
+}
 
 // User cache to avoid redundant Steam API calls per trade/message
 const userCache = new Map();
@@ -60,6 +70,7 @@ let reconnectAttempts = 0;
 function scheduleReconnect() {
     const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 5 * 60 * 1000);
     reconnectAttempts++;
+    state.set({ reconnectAttempts });
     logger.info(`Scheduling reconnect in ${delay / 1000}s (attempt ${reconnectAttempts})`);
     reconnectCounter.inc();
     setTimeout(() => steamClient.logOn(loginDetails), delay);
@@ -84,6 +95,7 @@ steamClient.logOn(loginDetails);
 // Log in
 steamClient.on('loggedOn', () => {
     reconnectAttempts = 0;
+    state.set({ loggedOn: true, reconnectAttempts: 0 });
     logger.info(`Logged into Steam`);
     sendDiscordMessage("🤖 Beep boop! I'm alive!")
     steamClient.setPersona(SteamUser.EPersonaState.Online);
@@ -91,6 +103,7 @@ steamClient.on('loggedOn', () => {
 
 steamClient.on("error", function (e) {
     logger.error(`Steam client error: ${e}`);
+    state.set({ lastError: { message: e.message, at: Date.now() }, loggedOn: false });
     errorCounter.inc();
 
     if (e.message.includes("Invalid Password") || e.message.includes("Invalid Auth Code")) {
@@ -126,6 +139,7 @@ steamClient.on('connected', () => {
 });
 
 steamClient.on('disconnected', () => {
+    state.set({ loggedOn: false });
     if (wasConnected) {
         logger.info(`Connection lost, trying to reconnect`);
         sendDiscordMessage("🤖 Beep boop! Good night!")
@@ -184,10 +198,21 @@ manager.on('newOffer', async function (steamOffer) {
     logger.debug(`ItemsToReceive: (${offer.itemsToReceive.length}) ${itemsToText(offer.itemsToReceive)}`);
     logger.debug(`ItemsToGive: (${offer.itemsToGive.length}) ${itemsToText(offer.itemsToGive)}`);
 
-    const result = validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppIdGet, saleMarketFeeAppIdGive });
+    const result = validateOffer(offer, getTradeRules());
     lines.push(...result.discordLines);
 
     logger.debug(`Trade will be accepted: ${result.accepted}`);
+
+    logTrade({
+        trade_id: steamOffer.id,
+        timestamp: steamOffer.created ? steamOffer.created.getTime() : Date.now(),
+        partner_id: tradePartner.steamid,
+        partner_name: tradePartner.personaname,
+        itemsToReceive: offer.itemsToReceive,
+        itemsToGive: offer.itemsToGive,
+        accepted: result.accepted,
+        reason: result.accepted ? null : result.errorLines,
+    });
 
     if (result.accepted) {
         lines.push('✅ Trade will be accepted!');

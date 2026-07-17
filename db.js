@@ -1,16 +1,13 @@
 const Database = require('better-sqlite3');
-const {format, getISOWeek} = require("date-fns");
+const { migrateStatsToTimestamp } = require('./migrations');
 
-const db = new Database('metrics.db');
+const db = new Database(process.env.DB_PATH || 'metrics.db');
 
-// V 1.0 - init
+// V 1.0 - init / V 1.3 - stats nutzt jetzt timestamp statt day/month/year/week
 db.exec(`
   CREATE TABLE IF NOT EXISTS stats (
     trade_id TEXT PRIMARY KEY,
-    day TEXT,
-    month TEXT,
-    year TEXT,
-    week TEXT,
+    timestamp INTEGER,
     gained INTEGER,
     given INTEGER
   );
@@ -27,9 +24,29 @@ db.exec(`
     );
 `);
 
+// V 1.2 - added rich trade history (accepted AND declined offers)
+db.exec(`
+    CREATE TABLE IF NOT EXISTS trades (
+        trade_id TEXT PRIMARY KEY,
+        timestamp INTEGER,
+        partner_id TEXT,
+        partner_name TEXT,
+        items_to_receive TEXT,
+        items_to_give TEXT,
+        receive_count INTEGER,
+        give_count INTEGER,
+        accepted INTEGER,
+        reason TEXT
+    );
+`);
+
+// Bestehende DBs vom alten stats-Schema (day/month/year/week) auf timestamp migrieren.
+// Muss vor den prepare()-Statements laufen, damit die timestamp-Spalte existiert.
+migrateStatsToTimestamp(db);
+
 const upsertStat = db.prepare(`
-    INSERT INTO stats (trade_id, day, month, year, week, gained, given)
-    VALUES (@trade_id, @day, @month, @year, @week, @gained, @given)
+    INSERT OR REPLACE INTO stats (trade_id, timestamp, gained, given)
+    VALUES (@trade_id, @timestamp, @gained, @given)
 `);
 
 const upsertMessage = db.prepare(`
@@ -37,19 +54,94 @@ const upsertMessage = db.prepare(`
     VALUES (@message_id, @sender_id, DATETIME(@unixtimestemp, 'unixepoch'), @message_text)
 `)
 
+const upsertTrade = db.prepare(`
+    INSERT OR REPLACE INTO trades
+        (trade_id, timestamp, partner_id, partner_name, items_to_receive, items_to_give,
+         receive_count, give_count, accepted, reason)
+    VALUES
+        (@trade_id, @timestamp, @partner_id, @partner_name, @items_to_receive, @items_to_give,
+         @receive_count, @give_count, @accepted, @reason)
+`);
+
 function logOffer(offer) {
-    const trade_id = offer.id;
-    const day = format(offer.created, 'dd');
-    const month = format(offer.created, 'MM');
-    const year = format(offer.created, 'yyyy');
-    const week = getISOWeek(offer.created);
-    const gained = offer.itemsToReceive.length;
-    const given = offer.itemsToGive.length;
-    upsertStat.run({trade_id, day, month, year, week, gained, given});
+    upsertStat.run({
+        trade_id: offer.id,
+        timestamp: offer.created ? offer.created.getTime() : Date.now(),
+        gained: offer.itemsToReceive.length,
+        given: offer.itemsToGive.length,
+    });
 }
 
 function logMessage(data) {
     upsertMessage.run(data);
 }
 
-module.exports = { db, logOffer, logMessage };
+// data: { trade_id, timestamp (unix ms), partner_id, partner_name,
+//         itemsToReceive: [], itemsToGive: [], accepted: bool, reason: string[]|null }
+function logTrade(data) {
+    upsertTrade.run({
+        trade_id: String(data.trade_id),
+        timestamp: data.timestamp,
+        partner_id: data.partner_id ?? null,
+        partner_name: data.partner_name ?? null,
+        items_to_receive: JSON.stringify(data.itemsToReceive ?? []),
+        items_to_give: JSON.stringify(data.itemsToGive ?? []),
+        receive_count: (data.itemsToReceive ?? []).length,
+        give_count: (data.itemsToGive ?? []).length,
+        accepted: data.accepted ? 1 : 0,
+        reason: data.reason ? JSON.stringify(data.reason) : null,
+    });
+}
+
+function parseTradeRow(row) {
+    return {
+        ...row,
+        accepted: !!row.accepted,
+        items_to_receive: JSON.parse(row.items_to_receive || '[]'),
+        items_to_give: JSON.parse(row.items_to_give || '[]'),
+        reason: row.reason ? JSON.parse(row.reason) : null,
+    };
+}
+
+function getTrades({ from, to, accepted, limit = 100 } = {}) {
+    const clauses = [];
+    const params = {};
+    if (from != null) { clauses.push('timestamp >= @from'); params.from = from; }
+    if (to != null) { clauses.push('timestamp <= @to'); params.to = to; }
+    if (accepted != null) { clauses.push('accepted = @accepted'); params.accepted = accepted ? 1 : 0; }
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    params.limit = Math.max(1, Math.min(Number(limit) || 100, 1000));
+    const rows = db.prepare(
+        `SELECT * FROM trades ${where} ORDER BY timestamp DESC LIMIT @limit`
+    ).all(params);
+    return rows.map(parseTradeRow);
+}
+
+const GROUP_EXPR = {
+    day: `strftime('%Y-%m-%d', datetime(timestamp/1000, 'unixepoch'))`,
+    week: `strftime('%Y-W%W', datetime(timestamp/1000, 'unixepoch'))`,
+    month: `strftime('%Y-%m', datetime(timestamp/1000, 'unixepoch'))`,
+};
+
+function getTradeAggregates({ groupBy = 'day' } = {}) {
+    const expr = GROUP_EXPR[groupBy] || GROUP_EXPR.day;
+    return db.prepare(`
+        SELECT ${expr} AS bucket,
+               COUNT(*) AS trades,
+               SUM(accepted) AS accepted,
+               SUM(CASE WHEN accepted = 1 THEN receive_count ELSE 0 END) AS gained,
+               SUM(CASE WHEN accepted = 1 THEN give_count ELSE 0 END) AS given
+        FROM trades
+        GROUP BY bucket
+        ORDER BY bucket ASC
+    `).all();
+}
+
+function getMessages({ limit = 100 } = {}) {
+    const lim = Math.max(1, Math.min(Number(limit) || 100, 1000));
+    return db.prepare(
+        `SELECT * FROM messages ORDER BY timestamp DESC LIMIT @limit`
+    ).all({ limit: lim });
+}
+
+module.exports = { db, logOffer, logMessage, logTrade, getTrades, getTradeAggregates, getMessages };
