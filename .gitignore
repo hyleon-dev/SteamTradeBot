@@ -131,7 +131,10 @@ dist
 
 # IDE
 .idea
+
 /config.json
-/metrics.db
 /metrics.sqlite
-/package-lock.json
+*.db
+
+# Lokaler Bild-Cache der Steam-Kartenbilder
+/image_cache

@@ -8,6 +8,8 @@
   --green: #37c871;
   --red: #e05a5a;
   --border: #2c3650;
+
+  --max-item-icons-per-line: 4;
 }
 
 * {
@@ -153,9 +155,17 @@ th, td {
   border-bottom: 1px solid var(--border);
 }
 
+tr {
+  vertical-align: baseline;
+}
+
 th {
   color: var(--muted);
   font-weight: 600;
+}
+
+.items-td {
+  max-width: calc(32px * var(--max-item-icons-per-line));
 }
 
 .status-accepted {

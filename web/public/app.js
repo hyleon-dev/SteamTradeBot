@@ -118,13 +118,17 @@ async function loadTrades() {
         <tr>
             <td>${new Date(t.timestamp).toLocaleString('de-DE')}</td>
             <td>${escapeHtml(t.partner_name || t.partner_id || '?')}</td>
-            <td>${t.receive_count}</td>
-            <td>${t.give_count}</td>
+            <td class="items-td">${t.items_to_receive.map(item => `<img src="https://community.akamai.steamstatic.com/economy/image/${item.image_url}" width="32" height="32" alt="" title="${escapeHtml(item.name || '')}">`).join('')}</td>
+            <td class="items-td">${t.items_to_give.map(item => `<img src="https://community.akamai.steamstatic.com/economy/image/${item.image_url}" width="32" height="32" alt="" title="${escapeHtml(item.name || '')}">`).join('')}</td>
             <td class="${t.accepted ? 'status-accepted'
       : 'status-declined'}">${t.accepted ? '✅ Angenommen' : '❌ Abgelehnt'}</td>
             <td>${t.reason ? escapeHtml(t.reason.join('; ')) : ''}</td>
         </tr>`).join('') || '<tr><td colspan="6">Keine Trades</td></tr>';
 }
+/*
+<td className="items-td">${t.items_to_receive.map(item => `<img src="/images/${encodeURIComponent(item.image_url)}" width="32" height="32" alt="" title="${escapeHtml(item.name || '')}">`).join('')}</td>
+<td className="items-td">${t.items_to_give.map(item => `<img src="/images/${encodeURIComponent(item.image_url)}" width="32" height="32" alt="" title="${escapeHtml(item.name || '')}">`).join('')}</td>
+*/
 
 $('#reloadTrades').addEventListener('click', loadTrades);
 $('#tradeFilter').addEventListener('change', loadTrades);

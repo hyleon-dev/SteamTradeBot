@@ -1,9 +1,17 @@
+const fs = require('fs/promises');
+const path = require('path');
+const logger = require('./logger');
+
+// Ordner, in dem die Bilder lokal landen sollen
+const CACHE_DIR = path.join(__dirname, 'image_cache');
+
 class TradeItem {
-    constructor({ appId, name, type, border, isTradingCard }) {
+    constructor({ appId, name, type, border, image_url, isTradingCard }) {
         this.appId = appId;           // market_fee_app als String
         this.name = name;             // Kartenname
         this.type = type;             // z.B. "Portal 2 Trading Card"
         this.border = border;         // "cardborder_0" (normal) | "cardborder_1" (foil)
+        this.image_url = image_url;   // Bild der Karte
         this.isTradingCard = isTradingCard;
     }
 }
@@ -22,6 +30,7 @@ function mapSteamItem(steamItem) {
         name: steamItem.name,
         type: steamItem.type,
         border: steamItem.tags.find(t => t.category === "cardborder")?.internal_name,
+        image_url: steamItem.icon_url_large,   // rohe Steam-Image-ID; Bild wird lazy über /images/:id gecacht
         isTradingCard: steamItem.tags.find(t => t.name === "Trading Card") != null
     });
 }
@@ -232,6 +241,45 @@ function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppId
 
     return { accepted, discordLines, errorLines };
 }
+// Steam-Image-IDs können '/' o.ä. enthalten -> in einen sicheren Dateinamen umwandeln.
+function cacheFileName(id) {
+    return String(id).replace(/[^A-Za-z0-9._-]/g, '_');
+}
+
+// Lädt das Bild zur Steam-Image-ID in den lokalen Cache (falls noch nicht vorhanden)
+// und gibt den absoluten Pfad der gecachten Datei zurück.
+async function loadImage(id) {
+    if (!id) {
+        return null;
+    }   // keine Image-ID -> nichts zu laden
+
+    // Sicherstellen, dass der Speicherordner existiert
+    await fs.mkdir(CACHE_DIR, {recursive: true});
+
+    const filePath = path.join(CACHE_DIR, cacheFileName(id));
+
+    try {
+        // Prüfen, ob die Datei schon existiert
+        await fs.access(filePath);
+        return filePath;
+    } catch {
+        // Datei existiert nicht -> aus dem Netz laden
+        const url = `https://community.akamai.steamstatic.com/economy/image/${id}`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            throw new Error(`Konnte Bild nicht laden: ${response.statusText}`);
+        }
+
+        // Bilddaten auslesen und auf die Festplatte schreiben
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+
+        await fs.writeFile(filePath, buffer);
+
+        return filePath;
+    }
+}
 
 module.exports = {
     TradeItem,
@@ -239,5 +287,6 @@ module.exports = {
     mapSteamItem,
     mapSteamOffer,
     validateOffer,
-    itemsToText
+    itemsToText,
+    loadImage
 };

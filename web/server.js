@@ -6,6 +6,7 @@ const {mountMetrics} = require('../metrics');
 const statusRoutes = require('./routes/status');
 const configRoutes = require('./routes/config');
 const tradesRoutes = require('./routes/trades');
+const imagesRoutes = require('./routes/images');
 
 // Basic-Auth-Middleware: greift nur, wenn WEB_AUTH_TOKEN gesetzt ist.
 // Beliebiger Benutzername, Passwort muss dem Token entsprechen.
@@ -40,6 +41,7 @@ function startServer() {
     app.use('/api/status', statusRoutes);
     app.use('/api/config', configRoutes);
     app.use('/api', tradesRoutes);
+    app.use('/images', basicAuth, imagesRoutes);
 
     app.use(basicAuth, express.static(path.join(__dirname, 'public')));
     logger.info('Web UI enabled');
