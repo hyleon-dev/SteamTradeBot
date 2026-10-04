@@ -1,0 +1,340 @@
+:root {
+  --bg: #0f1420;
+  --panel: #1a2130;
+  --panel-2: #222b3d;
+  --text: #e6ebf5;
+  --muted: #8a97ad;
+  --accent: #4f8cff;
+  --green: #37c871;
+  --red: #e05a5a;
+  --border: #2c3650;
+
+  --max-item-icons-per-line: 8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+header h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+nav#tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tab {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.tab.active {
+  color: var(--text);
+  background: var(--panel-2);
+  border-color: var(--accent);
+}
+
+main {
+  padding: 24px;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.panel {
+  display: none;
+}
+
+.panel.active {
+  display: block;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.tile {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.tile .value {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.tile .label {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.chart-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.chart-box {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+@media (max-width: 760px) {
+  .chart-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.controls {
+  margin: 16px 0;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+select, input[type=text], input[type=password] {
+  min-width: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+button {
+  background: var(--accent);
+  border: none;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+button:hover {
+  opacity: 0.9;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+th, td {
+  text-align: left;
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+tr {
+  vertical-align: baseline;
+}
+
+th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.items-td {
+  max-width: calc(32px * var(--max-item-icons-per-line));
+}
+
+/* Short highlight for a trade that arrived live. */
+@keyframes row-new-fade {
+  from {
+    background: rgba(79, 140, 255, 0.35);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+.row-new {
+  animation: row-new-fade 3s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-new {
+    animation: none;
+    outline: 1px solid var(--accent);
+  }
+}
+
+.status-accepted {
+  color: var(--green);
+}
+
+.status-declined {
+  color: #e05a5a;
+}
+
+/* Config: groups as cards side by side, fields inside as a grid. */
+#configFields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.field-group {
+  margin: 0;
+  padding: 12px 16px 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-width: 0;
+}
+
+.field-group.full {
+  grid-column: 1 / -1;
+}
+
+.field-group legend {
+  padding: 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px 16px;
+}
+
+/* 2 columns if there is space. Else 1 column. */
+.field-grid.cols-2 {
+  grid-template-columns: repeat(auto-fill, minmax(max(260px, calc(50% - 8px)), 1fr));
+}
+
+.field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field-row.wide {
+  grid-column: 1 / -1;
+}
+
+.field-row label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.field-row input[type=text], .field-row input[type=password] {
+  width: 100%;
+}
+
+.checkbox-row {
+  justify-content: flex-end;
+}
+
+.checkbox-row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* Save bar stays visible at the bottom while scrolling. */
+.save-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 12px 0;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
+.badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  margin-left: 6px;
+}
+
+.badge.restart {
+  background: #55411a;
+  color: #ffcf7a;
+}
+
+.badge.hot {
+  background: #1d4a32;
+  color: #8ee6b0;
+}
+
+.hint {
+  margin-top: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+#configMsg {
+  font-size: 13px;
+}
+
+#statusInfo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.status-item {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.status-item .k {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.status-item .v {
+  font-size: 16px;
+  margin-top: 4px;
+}

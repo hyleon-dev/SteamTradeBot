@@ -1,0 +1,88 @@
+const express = require('express');
+const config = require('../../config');
+const logger = require('../../logger');
+
+const router = express.Router();
+
+const isIdList = (value) => {
+  const arr = Array.isArray(value) ? value : String(value).split(',');
+  return arr.map(s => String(s).trim()).filter(Boolean).every(
+      s => /^\d+$/.test(s));
+};
+
+function validate(partial) {
+  const errors = [];
+  for (const [key, value] of Object.entries(partial)) {
+    const field = config.FIELD_BY_KEY.get(key);
+    if (!field) {
+      errors.push(`Unknown field: ${key}`);
+      continue;
+    }
+    // Line breaks and other control chars could inject extra lines into .env.
+    const values = Array.isArray(value) ? value : [value];
+    if (values.some(v => v !== null && typeof v === 'object')) {
+      errors.push(`${key} has an invalid value type`);
+      continue;
+    }
+    if (values.some(v => typeof v === 'string' && /[\x00-\x1f\x7f]/.test(v))) {
+      errors.push(`${key} must not contain line breaks or control characters`);
+      continue;
+    }
+    if (field.type === 'ids' || field.type === 'idOrNull') {
+      if (value && !isIdList(value)) {
+        errors.push(
+            `${key} must be a comma-separated list of numeric App/Steam IDs`);
+      }
+    }
+    if (key === 'port' && value && !/^\d+$/.test(String(value))) {
+      errors.push('port must be numeric');
+    }
+  }
+  return errors;
+}
+
+// GET: current config. Secrets are masked (only "set yes/no").
+router.get('/', (req, res) => {
+  const fields = config.describe().map(f => {
+    if (f.secret) {
+      return {
+        key: f.key,
+        secret: true,
+        restartRequired: f.restartRequired,
+        isSet: !!f.value
+      };
+    }
+    return {
+      key: f.key,
+      secret: false,
+      restartRequired: f.restartRequired,
+      value: f.value
+    };
+  });
+  res.json({fields});
+});
+
+// POST: apply config. Empty secret fields are ignored (not overwritten).
+router.post('/', (req, res) => {
+  const partial = {...req.body};
+
+  // Skip empty secret values, so masked fields are not deleted.
+  for (const key of Object.keys(partial)) {
+    const field = config.FIELD_BY_KEY.get(key);
+    if (field && field.secret && (partial[key] === '' || partial[key]
+        == null)) {
+      delete partial[key];
+    }
+  }
+
+  const errors = validate(partial);
+  if (errors.length) {
+    return res.status(400).json({errors});
+  }
+
+  const {restartRequired} = config.update(partial);
+  logger.info(`Config updated via web UI: ${Object.keys(partial).join(', ')}`);
+  res.json({ok: true, restartRequired});
+});
+
+module.exports = router;

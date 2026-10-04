@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SteamTradeBot</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Pinned version with SRI hash. The browser rejects the file if the CDN serves other content. -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"
+          integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ"
+          crossorigin="anonymous"></script>
+</head>
+<body>
+<header>
+  <h1>🤖 SteamTradeBot</h1>
+  <nav id="tabs">
+    <button class="tab active" data-tab="dashboard">Dashboard</button>
+    <button class="tab" data-tab="trades">Trades</button>
+    <button class="tab" data-tab="config">Config</button>
+    <button class="tab" data-tab="status">Status</button>
+  </nav>
+</header>
+
+<main>
+  <section id="dashboard" class="panel active">
+    <div class="tiles" id="tiles"></div>
+    <div class="chart-row">
+      <div class="chart-box">
+        <canvas id="tradesChart"></canvas>
+      </div>
+      <div class="chart-box">
+        <canvas id="cardsChart"></canvas>
+      </div>
+    </div>
+    <div class="controls">
+      <label>Group by:
+        <select id="groupBy">
+          <option value="day">Day</option>
+          <option value="week">Week</option>
+          <option value="month">Month</option>
+        </select>
+      </label>
+    </div>
+  </section>
+
+  <section id="trades" class="panel">
+    <div class="controls">
+      <label>Filter:
+        <select id="tradeFilter">
+          <option value="">All</option>
+          <option value="true">Accepted</option>
+          <option value="false">Declined</option>
+        </select>
+      </label>
+      <button id="reloadTrades">Refresh</button>
+    </div>
+    <table id="tradesTable">
+      <thead>
+      <tr>
+        <th>Time</th>
+        <th>Partner</th>
+        <th>Received</th>
+        <th>Given</th>
+        <th>Status</th>
+        <th>Reason</th>
+      </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section id="config" class="panel">
+    <p class="hint">Groups marked <span class="badge restart">Restart</span> take effect after a restart. Enter ID lists comma-separated. Leave secret fields empty to keep the current value.</p>
+    <form id="configForm">
+      <div id="configFields"></div>
+      <div class="save-bar">
+        <button type="submit">Save</button>
+        <span id="configMsg" role="status"></span>
+      </div>
+    </form>
+  </section>
+
+  <section id="status" class="panel">
+    <div id="statusInfo"></div>
+    <button id="reloadStatus">Refresh</button>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

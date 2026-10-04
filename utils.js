@@ -1,9 +1,17 @@
+const fs = require('fs/promises');
+const path = require('path');
+const logger = require('./logger');
+
+// Local folder for cached images
+const CACHE_DIR = path.join(__dirname, 'image_cache');
+
 class TradeItem {
-    constructor({ appId, name, type, border, isTradingCard }) {
-        this.appId = appId;           // market_fee_app als String
-        this.name = name;             // Kartenname
-        this.type = type;             // z.B. "Portal 2 Trading Card"
+    constructor({ appId, name, type, border, image_url, isTradingCard }) {
+        this.appId = appId;           // market_fee_app as string
+        this.name = name;             // card name
+        this.type = type;             // e.g. "Portal 2 Trading Card"
         this.border = border;         // "cardborder_0" (normal) | "cardborder_1" (foil)
+        this.image_url = image_url;   // card image
         this.isTradingCard = isTradingCard;
     }
 }
@@ -22,6 +30,7 @@ function mapSteamItem(steamItem) {
         name: steamItem.name,
         type: steamItem.type,
         border: steamItem.tags.find(t => t.category === "cardborder")?.internal_name,
+        image_url: steamItem.icon_url_large,   // raw Steam image ID. /images/:id caches the image on first use
         isTradingCard: steamItem.tags.find(t => t.name === "Trading Card") != null
     });
 }
@@ -98,15 +107,17 @@ function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppId
     const discordLines = [];
     const errorLines = [];
 
-    // Prüfen ob alle Items Trading Cards sind
+    // Check that all items are trading cards
     const itemsToReceiveAreTradingCards = itemsToReceive.every(item => item.isTradingCard);
     const itemsToGiveAreTradingCards = itemsToGive.every(item => item.isTradingCard);
 
     if (!itemsToReceiveAreTradingCards || !itemsToGiveAreTradingCards) {
-        return { accepted: false, discordLines: ['🔴 Found something other than a trading card in trade.'] };
+        // errorLines must be set. index.js spreads it into the Discord message.
+        const error = '🔴 Found something other than a trading card in trade.';
+        return { accepted: false, discordLines: [error], errorLines: [error] };
     }
 
-    // Item-Maps erstellen und Hard-Blacklist filtern
+    // Build item maps and filter hard blacklist
     const { map: itemsToGiveMap, blacklistedGames: hardBLGive, includesBlacklisted: blGive } = buildItemMap(itemsToGive, hardBlacklist.give);
     const { map: itemsToReceiveMap, blacklistedGames: hardBLReceive, includesBlacklisted: blReceive } = buildItemMap(itemsToReceive, hardBlacklist.get);
     if (blGive || blReceive) includesHardBlacklisted = true;
@@ -115,7 +126,7 @@ function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppId
 
     discordLines.push('↔️ Following trades will be made:');
 
-    // 1:1-Trades herausfiltern (gleiche App, gleicher Border, gleiche Anzahl)
+    // Filter out 1:1 trades (same app, same border, same count)
     itemsToGiveMap.forEach((items, key) => {
         if (itemsToReceiveMap.has(key) && items.length === itemsToReceiveMap.get(key).length) {
             for (let i = 0; i < items.length; i++) {
@@ -136,7 +147,7 @@ function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppId
         }
     });
 
-    // Soft-Blacklist filtern
+    // Filter soft blacklist
     const { items: filteredGive, blacklistedGames: softBLGive, includesBlacklisted: softBlGive } = filterSoftBlacklist(itemsToGiveMap, softBlacklist.give);
     const { items: filteredReceive, blacklistedGames: softBLReceive, includesBlacklisted: softBlReceive } = filterSoftBlacklist(itemsToReceiveMap, softBlacklist.get);
     itemsToGive = filteredGive;
@@ -145,14 +156,14 @@ function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppId
     pushBlacklistWarning(discordLines, 'Soft', 'give', softBLGive);
     pushBlacklistWarning(discordLines, 'Soft', 'get', softBLReceive);
 
-    // Sale-Karten-Logik
+    // Sale card logic
     const saleGetId = (saleMarketFeeAppIdGet != null && saleMarketFeeAppIdGet !== "")
         ? String(saleMarketFeeAppIdGet) : null;
     const saleGiveIds = Array.isArray(saleMarketFeeAppIdGive)
         ? saleMarketFeeAppIdGive.map(String) : [];
 
     if (saleGetId) {
-        // Regel "get": 1 Sale-Karte erhalten, 2 normale Karten abgeben
+        // Rule "get": receive 1 sale card, give 2 normal cards
         const receiveSnapshot = [...itemsToReceive];
         receiveSnapshot.forEach(itemToGet => {
             if (itemToGet.appId !== saleGetId) return;
@@ -174,10 +185,12 @@ function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppId
             }
         });
 
-        // Regel "give": 1 Sale-Karte abgeben, 3 normale Karten erhalten
+        // Rule "give": give 1 sale card, receive 3 normal cards
         const giveSnapshot = [...itemsToGive];
         giveSnapshot.forEach(itemToGive => {
             if (!saleGiveIds.includes(itemToGive.appId) || !saleCardsToGiveValid) return;
+            // Card was already counted in an earlier iteration (same app + border).
+            if (!itemsToGive.includes(itemToGive)) return;
 
             const giveItems = itemsToGive.filter(g => g.appId === itemToGive.appId && g.border === itemToGive.border);
             const receiveItems = itemsToReceive.filter(r => r.appId !== itemToGive.appId && r.border === itemToGive.border);
@@ -199,23 +212,26 @@ function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppId
         });
     }
 
-    // Cross-Set-Ratio prüfen (X abgeben, X*2 oder mehr erhalten)
+    // Check cross-set ratio (give X, receive X*2 or more)
     const normalCardsToGive    = countByBorder(itemsToGive,    "cardborder_0");
     const normalCardsToReceive = countByBorder(itemsToReceive, "cardborder_0");
     const foilCardsToGive      = countByBorder(itemsToGive,    "cardborder_1");
     const foilCardsToReceive   = countByBorder(itemsToReceive, "cardborder_1");
 
-    const crossSetItemCountValid = normalCardsToGive * 2 <= normalCardsToReceive
+    // Cards with unknown border are not counted. Without this check the bot gives them away for nothing.
+    const allGiveBordersKnown = itemsToGive.every(item => item.border === "cardborder_0" || item.border === "cardborder_1");
+    const crossSetItemCountValid = allGiveBordersKnown
+        && normalCardsToGive * 2 <= normalCardsToReceive
         && foilCardsToGive * 2 <= foilCardsToReceive;
 
-    // Discord-Zeilen für Cross-Set-Trades
+    // Discord lines for cross-set trades
     if (crossSetItemCountValid && itemsToGive.length > 0) {
         for (let i = 0; i < itemsToGive.length; i++) {
             discordLines.push(`➡️ ${itemsToReceive[i * 2].name} (${trimItemType(itemsToReceive[i * 2].type)}) \n➡️ ${itemsToReceive[i * 2 + 1].name} (${trimItemType(itemsToReceive[i * 2 + 1].type)}) \n⬅️ ${itemsToGive[i].name} (${trimItemType(itemsToGive[i].type)}) \n`);
         }
     }
 
-    // Annahmebedingung (entspricht tradeAcceptCondition in der ursprünglichen index.js)
+    // Accept condition (same as tradeAcceptCondition in the original index.js)
     const accepted = (itemsToGiveAreTradingCards || itemsToGive.length === 0)
         && (crossSetItemCountValid || itemsToGive.length === 0)
         && saleCardsToGiveValid
@@ -232,6 +248,45 @@ function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppId
 
     return { accepted, discordLines, errorLines };
 }
+// Steam image IDs can contain '/' and similar chars -> convert to a safe file name.
+function cacheFileName(id) {
+    return String(id).replace(/[^A-Za-z0-9._-]/g, '_');
+}
+
+// Loads the image for a Steam image ID into the local cache (if not there yet).
+// Returns the absolute path of the cached file.
+async function loadImage(id) {
+    if (!id) {
+        return null;
+    }   // no image ID -> nothing to load
+
+    // Make sure the cache folder exists
+    await fs.mkdir(CACHE_DIR, {recursive: true});
+
+    const filePath = path.join(CACHE_DIR, cacheFileName(id));
+
+    try {
+        // Check if the file exists already
+        await fs.access(filePath);
+        return filePath;
+    } catch {
+        // File does not exist -> download it
+        const url = `https://community.akamai.steamstatic.com/economy/image/${id}`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            throw new Error(`Could not load image: ${response.statusText}`);
+        }
+
+        // Read image data and write it to disk
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+
+        await fs.writeFile(filePath, buffer);
+
+        return filePath;
+    }
+}
 
 module.exports = {
     TradeItem,
@@ -239,5 +294,6 @@ module.exports = {
     mapSteamItem,
     mapSteamOffer,
     validateOffer,
-    itemsToText
+    itemsToText,
+    loadImage
 };

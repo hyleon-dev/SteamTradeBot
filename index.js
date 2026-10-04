@@ -5,9 +5,12 @@ const TradeOfferManager = require('steam-tradeoffer-manager');
 const SteamID = require('steamid');
 const config = require('./config');
 const logger = require('./logger');
-const { db, logOffer, logMessage } = require('./db');
+const state = require('./state');
+const { db, logOffer, logMessage, logTrade } = require('./db');
 const { errorCounter, reconnectCounter } = require('./metrics');
+const { startServer } = require('./web/server');
 const { sendDiscordMessage } = require('./discord');
+const events = require('./events');
 const { mapSteamOffer, validateOffer, itemsToText } = require('./utils');
 
 const steamClient = new SteamUser();
@@ -28,17 +31,31 @@ const identitySecret = config.steam_identity_secret;
 
 // Uptime Kuma monitoring
 const pushURL = `${config.uptimekuma_url}/api/push/${config.uptimekuma_key}?status=up&msg=OK&ping=`;
+// Catch errors here. An unhandled rejection stops the process via winston.
 const heartbeat = async () => {
-    await fetch(pushURL);
+    try {
+        const response = await fetch(pushURL);
+        if (response.ok) state.set({ lastHeartbeat: Date.now() });
+        else logger.warn(`Uptime Kuma heartbeat failed: ${response.status} ${response.statusText}`);
+    } catch (err) {
+        logger.warn(`Uptime Kuma heartbeat failed: ${err.message}`);
+    }
 };
 heartbeat();
 setInterval(heartbeat, 60 * 1000);
 
-// Config
-const saleMarketFeeAppIdGive = Array.from(config.sale_market_fee_app_id_give).flatMap(id => String(id));
-const saleMarketFeeAppIdGet = config.sale_market_fee_app_id_get;
-const hardBlacklist = { get: Array.from(config.do_not_get_hard).flatMap(id => String(id)), give: Array.from(config.do_not_give_hard).flatMap(id => String(id)) };
-const softBlacklist = { get: Array.from(config.do_not_get_soft).flatMap(id => String(id)), give: Array.from(config.do_not_give_soft).flatMap(id => String(id)) };
+// Start web/metrics server (dashboard only if WEB_UI_ENABLED, /metrics always)
+startServer();
+
+// Read trade rules from config for each offer (supports hot reload)
+function getTradeRules() {
+    return {
+        saleMarketFeeAppIdGive: config.sale_market_fee_app_id_give.map(String),
+        saleMarketFeeAppIdGet: config.sale_market_fee_app_id_get,
+        hardBlacklist: { get: config.do_not_get_hard.map(String), give: config.do_not_give_hard.map(String) },
+        softBlacklist: { get: config.do_not_get_soft.map(String), give: config.do_not_give_soft.map(String) },
+    };
+}
 
 // User cache to avoid redundant Steam API calls per trade/message
 const userCache = new Map();
@@ -47,10 +64,18 @@ const USER_CACHE_TTL = 5 * 60 * 1000;
 async function loadUserFromAccountId(steamId) {
     const cached = userCache.get(steamId);
     if (cached && cached.expiresAt > Date.now()) return cached.data;
-    const data = (await (await fetch(`https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=${config.steam_api_key}&steamids=${steamId}`)).json())
-        .response.players[0];
-    userCache.set(steamId, { data, expiresAt: Date.now() + USER_CACHE_TTL });
-    return data;
+    try {
+        const response = await fetch(`https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=${config.steam_api_key}&steamids=${steamId}`);
+        if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+        const data = (await response.json())?.response?.players?.[0];
+        if (!data) throw new Error('player not found');
+        userCache.set(steamId, { data, expiresAt: Date.now() + USER_CACHE_TTL });
+        return data;
+    } catch (err) {
+        // Fallback without cache. Offer and chat handling must not fail because of this.
+        logger.warn(`Could not load user ${steamId}: ${err.message}`);
+        return { steamid: String(steamId), personaname: String(steamId) };
+    }
 }
 
 // Reconnect with exponential backoff (max 5 minutes between attempts)
@@ -60,6 +85,7 @@ let reconnectAttempts = 0;
 function scheduleReconnect() {
     const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 5 * 60 * 1000);
     reconnectAttempts++;
+    state.set({ reconnectAttempts });
     logger.info(`Scheduling reconnect in ${delay / 1000}s (attempt ${reconnectAttempts})`);
     reconnectCounter.inc();
     setTimeout(() => steamClient.logOn(loginDetails), delay);
@@ -84,6 +110,9 @@ steamClient.logOn(loginDetails);
 // Log in
 steamClient.on('loggedOn', () => {
     reconnectAttempts = 0;
+    // steam-user has no 'connected' event. So set the flag here.
+    wasConnected = true;
+    state.set({ loggedOn: true, reconnectAttempts: 0 });
     logger.info(`Logged into Steam`);
     sendDiscordMessage("🤖 Beep boop! I'm alive!")
     steamClient.setPersona(SteamUser.EPersonaState.Online);
@@ -91,6 +120,7 @@ steamClient.on('loggedOn', () => {
 
 steamClient.on("error", function (e) {
     logger.error(`Steam client error: ${e}`);
+    state.set({ lastError: { message: e.message, at: Date.now() }, loggedOn: false });
     errorCounter.inc();
 
     if (e.message.includes("Invalid Password") || e.message.includes("Invalid Auth Code")) {
@@ -120,27 +150,36 @@ steamClient.on('webSession', (sessionid, cookies) => {
     community.setCookies(cookies);
 });
 
-steamClient.on('connected', () => {
-    wasConnected = true;
-    logger.info(`Connected to Steam`);
+// Web session expired: get new cookies. The Steam client stays logged in.
+community.on('sessionExpired', () => {
+    logger.warn('Web session expired, refreshing');
+    if (steamClient.steamID) steamClient.webLogOn();
 });
 
 steamClient.on('disconnected', () => {
+    state.set({ loggedOn: false });
+    // steam-user reconnects by itself after 'disconnected' (autoRelogin).
+    // An own logOn() here throws "Already logged on" and stops the process.
     if (wasConnected) {
-        logger.info(`Connection lost, trying to reconnect`);
+        logger.info(`Connection lost, steam-user reconnects automatically`);
         sendDiscordMessage("🤖 Beep boop! Good night!")
-        scheduleReconnect();
     }
     wasConnected = false;
 });
 
 // Steam chat message forwarding
-steamClient.chat.on('friendMessage', async (msg) => {
+steamClient.chat.on('friendMessage', (msg) => {
+    handleFriendMessage(msg).catch(err => {
+        logger.error(`Failed to handle friend message: ${err.stack || err}`);
+        errorCounter.inc();
+    });
+});
+
+async function handleFriendMessage(msg) {
 
     const userLinkPart1 = `https://steamcommunity.com/profiles/`
     const uniqueId = `${msg.server_timestamp.getTime()}_${msg.ordinal}`;
     const steamID64 = msg.steamid_friend.getSteamID64();
-    const user = await loadUserFromAccountId(steamID64);
 
     if (config.ignore_messages_from.includes(steamID64)) {
         logger.debug(`Message from ${steamID64} ignored`);
@@ -152,6 +191,7 @@ steamClient.chat.on('friendMessage', async (msg) => {
         return;
     }
 
+    const user = await loadUserFromAccountId(steamID64);
     logger.info(`Message from ${user.personaname} (${steamID64}) received: '${msg.message}'`);
 
     logMessage({
@@ -163,16 +203,24 @@ steamClient.chat.on('friendMessage', async (msg) => {
 
     await steamClient.chat.sendFriendMessage(msg.steamid_friend, `Please use main account for communication: ${userLinkPart1}${config.steam_main_account}`);
     await steamClient.chat.sendFriendMessage(config.steam_main_account, `Message from ${user.personaname}: '${msg.message}' \n ${userLinkPart1}${steamID64}`);
+}
+
+manager.on('newOffer', (steamOffer) => {
+    handleNewOffer(steamOffer).catch(err => {
+        logger.error(`Failed to handle offer ${steamOffer.id}: ${err.stack || err}`);
+        errorCounter.inc();
+        sendDiscordMessage(`❌ Error while handling offer ${steamOffer.id}. Please check manually.`);
+    });
 });
 
-manager.on('newOffer', async function (steamOffer) {
+async function handleNewOffer(steamOffer) {
 
     const partnerSteamId = SteamID.fromIndividualAccountID(steamOffer.partner.accountid);
     let tradePartner = await loadUserFromAccountId(partnerSteamId.getSteamID64());
 
     logger.info(`Start of offer validation for ${steamOffer.id} from ${tradePartner.personaname} (${tradePartner.steamid})`);
 
-    // Local array per offer – prevents race conditions when multiple offers arrive concurrently
+    // Local array per offer. Prevents race conditions when multiple offers arrive concurrently.
     const lines = [];
     lines.push(`🆕 Offer from ${tradePartner.personaname} received.`);
     lines.push('\n');
@@ -184,10 +232,23 @@ manager.on('newOffer', async function (steamOffer) {
     logger.debug(`ItemsToReceive: (${offer.itemsToReceive.length}) ${itemsToText(offer.itemsToReceive)}`);
     logger.debug(`ItemsToGive: (${offer.itemsToGive.length}) ${itemsToText(offer.itemsToGive)}`);
 
-    const result = validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppIdGet, saleMarketFeeAppIdGive });
+    const result = validateOffer(offer, getTradeRules());
     lines.push(...result.discordLines);
 
     logger.debug(`Trade will be accepted: ${result.accepted}`);
+
+    logTrade({
+        trade_id: steamOffer.id,
+        timestamp: steamOffer.created ? steamOffer.created.getTime() : Date.now(),
+        partner_id: tradePartner.steamid,
+        partner_name: tradePartner.personaname,
+        itemsToReceive: offer.itemsToReceive,
+        itemsToGive: offer.itemsToGive,
+        accepted: result.accepted,
+        reason: result.accepted ? null : result.errorLines,
+    });
+    // Web UI reloads the trade list live.
+    events.emit('trade', { trade_id: String(steamOffer.id), accepted: result.accepted });
 
     if (result.accepted) {
         lines.push('✅ Trade will be accepted!');
@@ -201,13 +262,17 @@ manager.on('newOffer', async function (steamOffer) {
     lines.push('---');
     sendDiscordMessage(lines.join('\n'));
     logger.info(`End of offer validation for ${steamOffer.id}`);
-});
+}
 
 const MAX_ACCEPT_ATTEMPTS = 3;
 
 function acceptOffer(offer, attempt = 0) {
     offer.accept((err, status) => {
-        if (!err) {
+        if (!err && status !== 'pending') {
+            // Bot gives nothing: Steam needs no mobile confirmation.
+            logger.info(`Offer ${offer.id} accepted by bot (no confirmation needed)`);
+            logOffer(offer);
+        } else if (!err) {
             logger.info(`Offer ${offer.id} accepted by bot (awaiting Mobile confirmation)`);
             community.acceptConfirmationForObject(identitySecret, offer.id, (err) => {
                 if (err) {
@@ -224,12 +289,14 @@ function acceptOffer(offer, attempt = 0) {
                 return;
             }
             reconnectCounter.inc();
-            logger.warn(`Session timed out (attempt ${attempt + 1}/${MAX_ACCEPT_ATTEMPTS}), re-logging in`);
-            steamClient.logOff();
-            steamClient.logOn(loginDetails);
+            // Only refresh the web session. logOff() + logOn() right after each other throws
+            // "Already logged on", because steamID is still set during logOn.
+            logger.warn(`Session timed out (attempt ${attempt + 1}/${MAX_ACCEPT_ATTEMPTS}), refreshing web session`);
+            if (steamClient.steamID) steamClient.webLogOn();
             setTimeout(() => acceptOffer(offer, attempt + 1), 40000);
         } else {
-            logger.error(err);
+            logger.error(`Failed to accept offer ${offer.id}: ${err.message}`);
+            sendDiscordMessage(`❌ Failed to accept offer ${offer.id}: ${err.message}`);
         }
     });
 }

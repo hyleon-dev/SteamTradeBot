@@ -11,7 +11,10 @@ function sendDiscordMessage(message) {
       },
       body: JSON.stringify({
         content: message,
-        username: 'SteamTradeBot'
+        username: 'SteamTradeBot',
+        // Messages contain Steam names and chat text from strangers.
+        // Block all mentions, so "@everyone" in a name pings nobody.
+        allowed_mentions: { parse: [] }
       })
     })
     .then(response => {

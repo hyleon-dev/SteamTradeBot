@@ -129,9 +129,48 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
-# IDE
+# IDE / editors
 .idea
+.vscode/
+*.swp
+*~
+.claude
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Project ──────────────────────────────────────────────────────────────────
+
+# Secrets: all env files except the template
+.env.*
+!.env.template
+# Old JSON config (replaced by .env)
 /config.json
-/metrics.db
-/metrics.sqlite
-/package-lock.json
+
+# Steam Guard / authenticator files (SDA maFiles). Never commit these.
+*.maFile
+maFiles/
+
+# TLS keys and certificates (e.g. for a reverse proxy)
+*.pem
+*.key
+*.crt
+
+# SQLite databases and their temp files (journal, WAL)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+
+# Backups
+*.bak
+*.backup
+*.old
+
+# Local cache of Steam card images
+/image_cache
