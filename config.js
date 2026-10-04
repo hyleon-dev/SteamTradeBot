@@ -7,8 +7,8 @@ require('dotenv').config({ path: ENV_PATH });
 
 const parseIds = (str) => (str ? str.split(',').map(s => s.trim()).filter(Boolean) : []);
 
-// Feld-Metadaten: steuern Parsing, Maskierung (secret) und ob eine Änderung
-// zur Laufzeit übernommen werden kann (hotReload) oder einen Neustart braucht.
+// Field metadata: controls parsing, masking (secret) and if a change
+// applies at runtime (hotReload) or needs a restart.
 const FIELDS = [
     { key: 'port', env: 'PORT', type: 'string', secret: false, hotReload: false },
     { key: 'steam_username', env: 'STEAM_USERNAME', type: 'string', secret: false, hotReload: false },
@@ -53,19 +53,20 @@ function parseValue(field, raw) {
 
 function serialize(field, value) {
     if (value === undefined || value === null) return '';
-    if (field.type === 'ids') return Array.isArray(value) ? value.join(',') : String(value);
+    // Web UI shows "a, b, c". Store in .env without spaces.
+    if (field.type === 'ids') return parseIds(Array.isArray(value) ? value.join(',') : String(value)).join(',');
     if (field.type === 'bool') return (value === true || value === 'true' || value === '1' || value === 1) ? 'true' : 'false';
     return String(value);
 }
 
-// Werte aus process.env in das exportierte Objekt schreiben.
+// Write values from process.env into the exported object.
 function refresh() {
     for (const field of FIELDS) {
         config[field.key] = parseValue(field, process.env[field.env]);
     }
 }
 
-// .env-Datei erhalten (Kommentare/andere Keys) und nur betroffene Zeilen ersetzen.
+// Keep the .env file (comments, other keys). Replace only the changed lines.
 function writeEnv(envUpdates) {
     let lines = [];
     if (fs.existsSync(ENV_PATH)) {
@@ -93,8 +94,8 @@ function formatEnvValue(value) {
     return value;
 }
 
-// Werte aus der Web-UI übernehmen. Gibt zurück, welche geänderten Felder
-// einen Neustart benötigen.
+// Apply values from the web UI. Returns the changed fields
+// that need a restart.
 function update(partial) {
     const envUpdates = {};
     const restartRequired = [];
@@ -111,13 +112,13 @@ function update(partial) {
     return { restartRequired };
 }
 
-// .env erneut von der Platte lesen (z.B. nach externer Bearbeitung).
+// Read .env from disk again (e.g. after an external edit).
 function reload() {
     require('dotenv').config({ path: ENV_PATH, override: true });
     refresh();
 }
 
-// Beschreibung aller Felder für die API (Werte werden hier NICHT maskiert).
+// Description of all fields for the API. Values are NOT masked here.
 function describe() {
     return FIELDS.map(field => ({
         key: field.key,

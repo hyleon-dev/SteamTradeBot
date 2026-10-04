@@ -1,11 +1,11 @@
-// Geteilter Laufzeit-Status des Bots.
-// index.js aktualisiert diesen State bei Steam-Events; die Web-API liest daraus.
+// Shared runtime state of the bot.
+// index.js updates this state on Steam events. The web API reads from it.
 const state = {
   startedAt: Date.now(),
   loggedOn: false,
   reconnectAttempts: 0,
-  lastHeartbeat: null,   // Unix-ms des letzten erfolgreichen Uptime-Kuma-Pings
-  lastError: null,       // { message, at } des letzten Steam-Client-Fehlers
+  lastHeartbeat: null,   // Unix ms of the last successful Uptime Kuma ping
+  lastError: null,       // { message, at } of the last Steam client error
 };
 
 function get() {

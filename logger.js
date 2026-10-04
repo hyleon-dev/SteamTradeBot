@@ -49,7 +49,7 @@ const logger = createLogger({
       filename: 'logs/crash-%DATE%.log',
       datePattern: 'YYYY-MM-DD'
     }),
-    // Crashes auch im Terminal zeigen, nicht nur im crash-Log
+    // Show crashes in the terminal too, not only in the crash log
     new transports.Console()
   ],
   rejectionHandlers: [

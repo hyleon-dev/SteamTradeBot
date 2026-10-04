@@ -50,25 +50,25 @@ async function loadDashboard() {
   const rate = totals.trades ? Math.round(
       (totals.accepted / totals.trades) * 100) : 0;
   $('#tiles').innerHTML = [
-    tile(totals.trades, 'Trades gesamt'),
-    tile(`${rate}%`, 'Annahmequote'),
-    tile(totals.gained, 'Karten erhalten'),
-    tile(totals.given, 'Karten gegeben'),
+    tile(totals.trades, 'Total trades'),
+    tile(`${rate}%`, 'Acceptance rate'),
+    tile(totals.gained, 'Cards received'),
+    tile(totals.given, 'Cards given'),
   ].join('');
 
   tradesChart = drawChart(tradesChart, 'tradesChart', labels, [
     {label: 'Trades', data: data.map(d => d.trades), color: '#4f8cff'},
     {
-      label: 'Angenommen',
+      label: 'Accepted',
       data: data.map(d => d.accepted || 0),
       color: '#37c871'
     },
-  ], 'Trades über Zeit');
+  ], 'Trades over time');
 
   cardsChart = drawChart(cardsChart, 'cardsChart', labels, [
-    {label: 'Erhalten', data: data.map(d => d.gained || 0), color: '#37c871'},
-    {label: 'Gegeben', data: data.map(d => d.given || 0), color: '#e0a05a'},
-  ], 'Karten über Zeit');
+    {label: 'Received', data: data.map(d => d.gained || 0), color: '#37c871'},
+    {label: 'Given', data: data.map(d => d.given || 0), color: '#e0a05a'},
+  ], 'Cards over time');
 }
 
 function tile(value, label) {
@@ -109,88 +109,162 @@ function drawChart(existing, canvasId, labels, series, title) {
 $('#groupBy').addEventListener('change', loadDashboard);
 
 // ---- Trades ----
-async function loadTrades() {
+// highlightId: trade_id of a new trade. Its row gets a short highlight.
+async function loadTrades(highlightId) {
   const filter = $('#tradeFilter').value;
   const q = filter === '' ? '' : `?accepted=${filter}`;
   const trades = await api(`/api/trades${q}`);
   const tbody = $('#tradesTable tbody');
   tbody.innerHTML = trades.map(t => `
-        <tr>
-            <td>${new Date(t.timestamp).toLocaleString('de-DE')}</td>
+        <tr${t.trade_id === highlightId ? ' class="row-new"' : ''}>
+            <td>${new Date(t.timestamp).toLocaleString('en-GB')}</td>
             <td>${escapeHtml(t.partner_name || t.partner_id || '?')}</td>
             <td class="items-td">${t.items_to_receive.map(item => `<img src="https://community.akamai.steamstatic.com/economy/image/${item.image_url}" width="32" height="32" alt="" title="${escapeHtml(item.name || '')}">`).join('')}</td>
             <td class="items-td">${t.items_to_give.map(item => `<img src="https://community.akamai.steamstatic.com/economy/image/${item.image_url}" width="32" height="32" alt="" title="${escapeHtml(item.name || '')}">`).join('')}</td>
             <td class="${t.accepted ? 'status-accepted'
-      : 'status-declined'}">${t.accepted ? '✅ Angenommen' : '❌ Abgelehnt'}</td>
+      : 'status-declined'}">${t.accepted ? '✅ Accepted' : '❌ Declined'}</td>
             <td>${t.reason ? escapeHtml(t.reason.join('; ')) : ''}</td>
-        </tr>`).join('') || '<tr><td colspan="6">Keine Trades</td></tr>';
+        </tr>`).join('') || '<tr><td colspan="6">No trades</td></tr>';
 }
 /*
 <td className="items-td">${t.items_to_receive.map(item => `<img src="/images/${encodeURIComponent(item.image_url)}" width="32" height="32" alt="" title="${escapeHtml(item.name || '')}">`).join('')}</td>
 <td className="items-td">${t.items_to_give.map(item => `<img src="/images/${encodeURIComponent(item.image_url)}" width="32" height="32" alt="" title="${escapeHtml(item.name || '')}">`).join('')}</td>
 */
 
-$('#reloadTrades').addEventListener('click', loadTrades);
-$('#tradeFilter').addEventListener('change', loadTrades);
+$('#reloadTrades').addEventListener('click', () => loadTrades());
+$('#tradeFilter').addEventListener('change', () => loadTrades());
+
+// ---- Live updates ----
+// Server pushes an event for each new trade (accepted or declined).
+// Reload only the open tab. Other tabs load fresh data on tab switch.
+function reloadActiveView(highlightId) {
+  const active = document.querySelector('.panel.active')?.id;
+  const load = active === 'trades' ? loadTrades(highlightId)
+      : active === 'dashboard' ? loadDashboard() : null;
+  load?.catch(err => console.error('Live reload failed', err));
+}
+
+const liveEvents = new EventSource('/api/events');
+liveEvents.addEventListener('trade', (e) => {
+  const {trade_id} = JSON.parse(e.data);
+  reloadActiveView(trade_id);
+});
+// After a reconnect (e.g. bot restart) events can be missed. Reload once.
+let liveConnectedOnce = false;
+liveEvents.addEventListener('open', () => {
+  if (liveConnectedOnce) {
+    reloadActiveView();
+  }
+  liveConnectedOnce = true;
+});
 
 // ---- Config ----
 const LABELS = {
   port: 'Port',
-  steam_username: 'Steam-Benutzername',
-  steam_password: 'Steam-Passwort',
+  steam_username: 'Steam username',
+  steam_password: 'Steam password',
   steam_shared_secret: 'Shared Secret',
   steam_identity_secret: 'Identity Secret',
   steam_api_key: 'Steam API Key',
-  steam_main_account: 'Hauptaccount (SteamID64)',
+  steam_main_account: 'Main account (SteamID64)',
   discord_webhook_id: 'Discord Webhook ID',
   discord_webhook_token: 'Discord Webhook Token',
   uptimekuma_url: 'Uptime Kuma URL',
   uptimekuma_key: 'Uptime Kuma Key',
-  prometheus_prefix: 'Prometheus-Prefix',
-  sale_market_fee_app_id_give: 'Sale App-IDs (give)',
-  sale_market_fee_app_id_get: 'Sale App-ID (get)',
-  do_not_give_hard: 'Hard-Blacklist (give)',
-  do_not_get_hard: 'Hard-Blacklist (get)',
-  do_not_give_soft: 'Soft-Blacklist (give)',
-  do_not_get_soft: 'Soft-Blacklist (get)',
-  ignore_messages_from: 'Nachrichten ignorieren von',
-  web_ui_enabled: 'Web UI aktiv',
+  prometheus_prefix: 'Prometheus prefix',
+  sale_market_fee_app_id_give: 'Sale app IDs (give)',
+  sale_market_fee_app_id_get: 'Sale app ID (get)',
+  do_not_give_hard: 'Hard blacklist (give)',
+  do_not_get_hard: 'Hard blacklist (get)',
+  do_not_give_soft: 'Soft blacklist (give)',
+  do_not_get_soft: 'Soft blacklist (get)',
+  ignore_messages_from: 'Ignore messages from',
+  web_ui_enabled: 'Web UI enabled',
   web_host: 'Web Host',
   web_auth_token: 'Web Auth Token',
 };
 
+// Config groups by topic. Fields without a group go to "Other".
+const CONFIG_GROUPS = [
+  {
+    title: 'Trade rules',
+    // Full width. give/get as pairs in 2 columns.
+    full: true,
+    keys: ['sale_market_fee_app_id_give', 'sale_market_fee_app_id_get',
+      'do_not_give_hard', 'do_not_get_hard', 'do_not_give_soft',
+      'do_not_get_soft', 'ignore_messages_from']
+  },
+  {
+    title: 'Steam',
+    keys: ['steam_username', 'steam_password', 'steam_shared_secret',
+      'steam_identity_secret', 'steam_api_key', 'steam_main_account']
+  },
+  {
+    title: 'Notifications & monitoring',
+    keys: ['discord_webhook_id', 'discord_webhook_token', 'uptimekuma_url',
+      'uptimekuma_key', 'prometheus_prefix']
+  },
+  {
+    title: 'Web UI',
+    keys: ['web_ui_enabled', 'port', 'web_host', 'web_auth_token']
+  },
+];
+
+// Wide fields use the full row of the group.
+const WIDE_FIELDS = new Set(['ignore_messages_from']);
+
 async function loadConfig() {
   const {fields} = await api('/api/config');
-  const hot = fields.filter(f => !f.restartRequired);
-  const restart = fields.filter(f => f.restartRequired);
-  $('#configFields').innerHTML =
-      group('Handel-Regeln (sofort aktiv)', hot) +
-      group('Verbindung & Secrets (Neustart nötig)', restart);
+  const byKey = new Map(fields.map(f => [f.key, f]));
+  const groups = CONFIG_GROUPS.map(g => ({
+    title: g.title,
+    full: g.full,
+    fields: g.keys.map(k => byKey.get(k)).filter(Boolean),
+  }));
+  const grouped = new Set(CONFIG_GROUPS.flatMap(g => g.keys));
+  const rest = fields.filter(f => !grouped.has(f.key));
+  if (rest.length) {
+    groups.push({title: 'Other', fields: rest});
+  }
+  $('#configFields').innerHTML = groups.filter(g => g.fields.length).map(
+      group).join('');
   $('#configMsg').textContent = '';
 }
 
-function group(title, fields) {
-  return `<div class="field-group"><h3>${title}</h3>${fields.map(fieldRow).join(
-      '')}</div>`;
+function group({title, full, fields}) {
+  // Badge on the group if all fields need a restart
+  // or none do. Else badge per field.
+  const allRestart = fields.every(f => f.restartRequired);
+  const noneRestart = fields.every(f => !f.restartRequired);
+  const badge = allRestart ? '<span class="badge restart">Restart</span>'
+      : noneRestart ? '<span class="badge hot">applies instantly</span>' : '';
+  const rows = fields.map(f => fieldRow(f, !allRestart && !noneRestart)).join(
+      '');
+  return `<fieldset class="field-group${full ? ' full'
+      : ''}"><legend>${title}${badge}</legend><div class="field-grid${full
+      ? ' cols-2' : ''}">${rows}</div></fieldset>`;
 }
 
-function fieldRow(f) {
+function fieldRow(f, showBadge) {
   const label = LABELS[f.key] || f.key;
-  const badge = f.restartRequired
-      ? '<span class="badge restart">Neustart</span>' : '';
+  const id = `cfg-${f.key}`;
+  const badge = showBadge && f.restartRequired
+      ? '<span class="badge restart">Restart</span>' : '';
+  const wide = WIDE_FIELDS.has(f.key) ? ' wide' : '';
+  if (typeof f.value === 'boolean') {
+    return `<div class="field-row checkbox-row${wide}"><label for="${id}"><input type="checkbox" id="${id}" name="${f.key}" ${f.value
+        ? 'checked' : ''}> ${label}${badge}</label></div>`;
+  }
   let input;
   if (f.secret) {
-    input = `<input type="password" name="${f.key}" placeholder="${f.isSet
-        ? '•••••• (gesetzt)' : 'nicht gesetzt'}">`;
-  } else if (typeof f.value === 'boolean') {
-    input = `<label><input type="checkbox" name="${f.key}" ${f.value ? 'checked'
-        : ''}> aktiv</label>`;
+    input = `<input type="password" id="${id}" name="${f.key}" autocomplete="new-password" placeholder="${f.isSet
+        ? '•••••• (set)' : 'not set'}">`;
   } else {
-    const val = Array.isArray(f.value) ? f.value.join(',') : (f.value ?? '');
-    input = `<input type="text" name="${f.key}" value="${escapeHtml(
+    const val = Array.isArray(f.value) ? f.value.join(', ') : (f.value ?? '');
+    input = `<input type="text" id="${id}" name="${f.key}" autocomplete="off" value="${escapeHtml(
         String(val))}">`;
   }
-  return `<div class="field-row"><label>${label}${badge}</label>${input}</div>`;
+  return `<div class="field-row${wide}"><label for="${id}">${label}${badge}</label>${input}</div>`;
 }
 
 $('#configForm').addEventListener('submit', async (e) => {
@@ -219,12 +293,12 @@ $('#configForm').addEventListener('submit', async (e) => {
     });
     $('#configMsg').textContent = res.restartRequired
     && res.restartRequired.length
-        ? `Gespeichert. Neustart nötig für: ${res.restartRequired.join(
+        ? `Saved. Restart required for: ${res.restartRequired.join(
             ', ')}`
-        : 'Gespeichert und sofort aktiv.';
+        : 'Saved and applied.';
     await loadConfig();
   } catch (err) {
-    $('#configMsg').textContent = 'Fehler: ' + err.message;
+    $('#configMsg').textContent = 'Error: ' + err.message;
   }
 });
 
@@ -232,13 +306,13 @@ $('#configForm').addEventListener('submit', async (e) => {
 async function loadStatus() {
   const s = await api('/api/status');
   const items = [
-    ['Eingeloggt', s.loggedOn ? '🟢 ja' : '🔴 nein'],
+    ['Logged in', s.loggedOn ? '🟢 yes' : '🔴 no'],
     ['Uptime', formatUptime(s.uptimeMs)],
-    ['Reconnect-Versuche', s.reconnectAttempts],
-    ['Letzter Heartbeat',
-      s.lastHeartbeat ? new Date(s.lastHeartbeat).toLocaleString('de-DE')
+    ['Reconnect attempts', s.reconnectAttempts],
+    ['Last heartbeat',
+      s.lastHeartbeat ? new Date(s.lastHeartbeat).toLocaleString('en-GB')
           : '—'],
-    ['Letzter Fehler', s.lastError ? `${s.lastError.message}` : '—'],
+    ['Last error', s.lastError ? `${s.lastError.message}` : '—'],
   ];
   $('#statusInfo').innerHTML = items.map(([k, v]) =>
       `<div class="status-item"><div class="k">${k}</div><div class="v">${escapeHtml(
@@ -246,6 +320,15 @@ async function loadStatus() {
 }
 
 $('#reloadStatus').addEventListener('click', loadStatus);
+
+// Auto refresh every 10 s. Only when the status tab is open and the page is visible.
+const STATUS_REFRESH_MS = 10 * 1000;
+setInterval(() => {
+  if (document.hidden || !$('#status').classList.contains('active')) {
+    return;
+  }
+  loadStatus().catch(err => console.error('Status refresh failed', err));
+}, STATUS_REFRESH_MS);
 
 function formatUptime(ms) {
   if (!ms) {

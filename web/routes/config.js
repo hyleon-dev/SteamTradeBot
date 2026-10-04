@@ -18,6 +18,16 @@ function validate(partial) {
       errors.push(`Unknown field: ${key}`);
       continue;
     }
+    // Line breaks and other control chars could inject extra lines into .env.
+    const values = Array.isArray(value) ? value : [value];
+    if (values.some(v => v !== null && typeof v === 'object')) {
+      errors.push(`${key} has an invalid value type`);
+      continue;
+    }
+    if (values.some(v => typeof v === 'string' && /[\x00-\x1f\x7f]/.test(v))) {
+      errors.push(`${key} must not contain line breaks or control characters`);
+      continue;
+    }
     if (field.type === 'ids' || field.type === 'idOrNull') {
       if (value && !isIdList(value)) {
         errors.push(
@@ -31,7 +41,7 @@ function validate(partial) {
   return errors;
 }
 
-// GET – aktuelle Config; Secrets werden maskiert (nur "gesetzt ja/nein").
+// GET: current config. Secrets are masked (only "set yes/no").
 router.get('/', (req, res) => {
   const fields = config.describe().map(f => {
     if (f.secret) {
@@ -52,11 +62,11 @@ router.get('/', (req, res) => {
   res.json({fields});
 });
 
-// POST – Config übernehmen. Leere Secret-Felder werden ignoriert (nicht überschrieben).
+// POST: apply config. Empty secret fields are ignored (not overwritten).
 router.post('/', (req, res) => {
   const partial = {...req.body};
 
-  // Leere Secret-Werte nicht übernehmen, damit maskierte Felder nicht gelöscht werden.
+  // Skip empty secret values, so masked fields are not deleted.
   for (const key of Object.keys(partial)) {
     const field = config.FIELD_BY_KEY.get(key);
     if (field && field.secret && (partial[key] === '' || partial[key]

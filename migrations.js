@@ -1,11 +1,11 @@
-// Idempotente Schema-Migrationen für die SQLite-DB.
+// Idempotent schema migrations for the SQLite DB.
 
-// V 1.3 – stats nutzt einen einzigen `timestamp` (Unix-ms) statt day/month/year/week.
-// Altdaten haben nur Tagesgenauigkeit → timestamp = Mitternacht (UTC) des jeweiligen Tages.
+// V 1.3: stats uses a single `timestamp` (Unix ms) instead of day/month/year/week.
+// Old data has day precision only → timestamp = midnight (UTC) of that day.
 function migrateStatsToTimestamp(db) {
   const cols = db.prepare('PRAGMA table_info(stats)').all().map(c => c.name);
 
-  // Kein `stats` vorhanden oder bereits neues Schema → nichts zu tun.
+  // No `stats` table or schema is already new → nothing to do.
   if (!cols.includes('year')) {
     return {migrated: false, rows: 0};
   }

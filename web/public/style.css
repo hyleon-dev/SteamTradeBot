@@ -9,7 +9,7 @@
   --red: #e05a5a;
   --border: #2c3650;
 
-  --max-item-icons-per-line: 4;
+  --max-item-icons-per-line: 8;
 }
 
 * {
@@ -24,18 +24,23 @@ body {
 }
 
 header {
-  padding: 16px 24px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  padding: 12px 24px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
 }
 
 header h1 {
-  margin: 0 0 12px;
+  margin: 0;
   font-size: 20px;
 }
 
 nav#tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -57,7 +62,7 @@ nav#tabs {
 
 main {
   padding: 24px;
-  max-width: 1100px;
+  max-width: 1600px;
   margin: 0 auto;
 }
 
@@ -121,6 +126,7 @@ main {
 }
 
 select, input[type=text], input[type=password] {
+  min-width: 0;
   background: var(--panel-2);
   border: 1px solid var(--border);
   color: var(--text);
@@ -168,6 +174,27 @@ th {
   max-width: calc(32px * var(--max-item-icons-per-line));
 }
 
+/* Short highlight for a trade that arrived live. */
+@keyframes row-new-fade {
+  from {
+    background: rgba(79, 140, 255, 0.35);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+.row-new {
+  animation: row-new-fade 3s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-new {
+    animation: none;
+    outline: 1px solid var(--accent);
+  }
+}
+
 .status-accepted {
   color: var(--green);
 }
@@ -176,17 +203,89 @@ th {
   color: #e05a5a;
 }
 
+/* Config: groups as cards side by side, fields inside as a grid. */
+#configFields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.field-group {
+  margin: 0;
+  padding: 12px 16px 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-width: 0;
+}
+
+.field-group.full {
+  grid-column: 1 / -1;
+}
+
+.field-group legend {
+  padding: 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px 16px;
+}
+
+/* 2 columns if there is space. Else 1 column. */
+.field-grid.cols-2 {
+  grid-template-columns: repeat(auto-fill, minmax(max(260px, calc(50% - 8px)), 1fr));
+}
+
 .field-row {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin-bottom: 14px;
-  max-width: 520px;
+  min-width: 0;
+}
+
+.field-row.wide {
+  grid-column: 1 / -1;
 }
 
 .field-row label {
   font-size: 13px;
   color: var(--muted);
+}
+
+.field-row input[type=text], .field-row input[type=password] {
+  width: 100%;
+}
+
+.checkbox-row {
+  justify-content: flex-end;
+}
+
+.checkbox-row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* Save bar stays visible at the bottom while scrolling. */
+.save-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 12px 0;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
 }
 
 .badge {
@@ -201,19 +300,18 @@ th {
   color: #ffcf7a;
 }
 
-.field-group h3 {
-  margin: 24px 0 12px;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 6px;
+.badge.hot {
+  background: #1d4a32;
+  color: #8ee6b0;
 }
 
 .hint {
+  margin-top: 0;
   color: var(--muted);
   font-size: 13px;
 }
 
 #configMsg {
-  margin-left: 12px;
   font-size: 13px;
 }
 

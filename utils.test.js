@@ -1,6 +1,6 @@
 const { TradeItem, TradeOffer, validateOffer, mapSteamItem, mapSteamOffer } = require('./utils');
 
-// Standardkonfiguration ohne Blacklists und ohne Sale-Karten
+// Default config without blacklists and without sale cards
 const DEFAULT_CONFIG = {
     hardBlacklist: { get: [], give: [] },
     softBlacklist: { get: [], give: [] },
@@ -8,7 +8,7 @@ const DEFAULT_CONFIG = {
     saleMarketFeeAppIdGive: []
 };
 
-// Erstellt eine normale Trading Card als TradeItem
+// Creates a normal trading card as TradeItem
 function card(appId, border = 'cardborder_0', name = 'Test Card') {
     return new TradeItem({
         appId: String(appId),
@@ -19,7 +19,7 @@ function card(appId, border = 'cardborder_0', name = 'Test Card') {
     });
 }
 
-// Erstellt ein Item, das KEINE Trading Card ist
+// Creates an item that is NOT a trading card
 function nonCard(appId) {
     return new TradeItem({
         appId: String(appId),
@@ -30,7 +30,7 @@ function nonCard(appId) {
     });
 }
 
-// Erstellt ein TradeOffer-Objekt
+// Creates a TradeOffer object
 function offer(give, receive) {
     return new TradeOffer({ id: 'test-offer', itemsToGive: give, itemsToReceive: receive });
 }
@@ -38,7 +38,7 @@ function offer(give, receive) {
 // ─── Cross-Set-Trades ────────────────────────────────────────────────────────
 
 describe('Cross-Set-Trades', () => {
-    test('1 abgeben, 2 erhalten → angenommen', () => {
+    test('give 1, receive 2 → accepted', () => {
         const result = validateOffer(
             offer([card(1)], [card(2), card(2)]),
             DEFAULT_CONFIG
@@ -46,7 +46,7 @@ describe('Cross-Set-Trades', () => {
         expect(result.accepted).toBe(true);
     });
 
-    test('2 abgeben, 4 erhalten → angenommen', () => {
+    test('give 2, receive 4 → accepted', () => {
         const result = validateOffer(
             offer([card(1), card(1)], [card(2), card(2), card(2), card(2)]),
             DEFAULT_CONFIG
@@ -54,7 +54,7 @@ describe('Cross-Set-Trades', () => {
         expect(result.accepted).toBe(true);
     });
 
-    test('1 abgeben, 3 erhalten → angenommen (mehr ist ok)', () => {
+    test('give 1, receive 3 → accepted (more is ok)', () => {
         const result = validateOffer(
             offer([card(1)], [card(2), card(2), card(2)]),
             DEFAULT_CONFIG
@@ -62,7 +62,7 @@ describe('Cross-Set-Trades', () => {
         expect(result.accepted).toBe(true);
     });
 
-    test('2 abgeben, 3 erhalten → abgelehnt (Ratio zu niedrig)', () => {
+    test('give 2, receive 3 → declined (ratio too low)', () => {
         const result = validateOffer(
             offer([card(1), card(1)], [card(2), card(2), card(2)]),
             DEFAULT_CONFIG
@@ -71,7 +71,7 @@ describe('Cross-Set-Trades', () => {
         expect(result.errorLines).toContain('🔴 Cross trading does not add up');
     });
 
-    test('1 abgeben, 1 erhalten (unterschiedliche Spiele) → abgelehnt', () => {
+    test('give 1, receive 1 (different games) → declined', () => {
         const result = validateOffer(
             offer([card(1)], [card(2)]),
             DEFAULT_CONFIG
@@ -83,7 +83,7 @@ describe('Cross-Set-Trades', () => {
 // ─── 1:1 Same-Game-Trades ────────────────────────────────────────────────────
 
 describe('1:1 Same-Game-Trades', () => {
-    test('2:2 gleiches Spiel → angenommen', () => {
+    test('2:2 same game → accepted', () => {
         const result = validateOffer(
             offer([card(1), card(1)], [card(1), card(1)]),
             DEFAULT_CONFIG
@@ -91,8 +91,8 @@ describe('1:1 Same-Game-Trades', () => {
         expect(result.accepted).toBe(true);
     });
 
-    test('1:1 gleiches Spiel + 1:2 Cross-Set → angenommen', () => {
-        // Spiel 1 wird als 1:1 herausgefiltert, Spiel 2 (give) gegen Spiel 3 (receive) bleibt als 1:2
+    test('1:1 same game + 1:2 cross-set → accepted', () => {
+        // Game 1 is filtered out as 1:1. Game 2 (give) for game 3 (receive) stays as 1:2
         const result = validateOffer(
             offer([card(1), card(2)], [card(1), card(3), card(3)]),
             DEFAULT_CONFIG
@@ -104,7 +104,7 @@ describe('1:1 Same-Game-Trades', () => {
 // ─── Non-Trading-Card-Items ──────────────────────────────────────────────────
 
 describe('Non-Trading-Card-Items', () => {
-    test('kein Trading Card in receive → abgelehnt', () => {
+    test('no trading card in receive → declined', () => {
         const result = validateOffer(
             offer([card(1)], [nonCard(2), card(2)]),
             DEFAULT_CONFIG
@@ -112,7 +112,7 @@ describe('Non-Trading-Card-Items', () => {
         expect(result.accepted).toBe(false);
     });
 
-    test('kein Trading Card in give → abgelehnt', () => {
+    test('no trading card in give → declined', () => {
         const result = validateOffer(
             offer([nonCard(1), card(1)], [card(2), card(2)]),
             DEFAULT_CONFIG
@@ -124,7 +124,7 @@ describe('Non-Trading-Card-Items', () => {
 // ─── Hard-Blacklist ──────────────────────────────────────────────────────────
 
 describe('Hard-Blacklist', () => {
-    test('hard blacklisted Spiel in receive → abgelehnt', () => {
+    test('hard blacklisted game in receive → declined', () => {
         const config = { ...DEFAULT_CONFIG, hardBlacklist: { get: ['99'], give: [] } };
         const result = validateOffer(
             offer([card(1), card(1)], [card(99), card(99), card(99), card(99)]),
@@ -134,7 +134,7 @@ describe('Hard-Blacklist', () => {
         expect(result.errorLines).toContain('🔴 Trade contains hard blacklisted game');
     });
 
-    test('hard blacklisted Spiel in give → abgelehnt', () => {
+    test('hard blacklisted game in give → declined', () => {
         const config = { ...DEFAULT_CONFIG, hardBlacklist: { get: [], give: ['99'] } };
         const result = validateOffer(
             offer([card(99), card(99)], [card(2), card(2), card(2), card(2)]),
@@ -144,7 +144,7 @@ describe('Hard-Blacklist', () => {
         expect(result.errorLines).toContain('🔴 Trade contains hard blacklisted game');
     });
 
-    test('hard blacklisted Spiel → Discord-Warnung enthält Spielnamen', () => {
+    test('hard blacklisted game → Discord warning contains game name', () => {
         const config = { ...DEFAULT_CONFIG, hardBlacklist: { get: ['99'], give: [] } };
         const result = validateOffer(
             offer([card(1), card(1)], [card(99), card(99), card(99), card(99)]),
@@ -157,7 +157,7 @@ describe('Hard-Blacklist', () => {
 // ─── Soft-Blacklist ──────────────────────────────────────────────────────────
 
 describe('Soft-Blacklist', () => {
-    test('soft blacklisted Spiel in Cross-Set-receive → abgelehnt', () => {
+    test('soft blacklisted game in cross-set receive → declined', () => {
         const config = { ...DEFAULT_CONFIG, softBlacklist: { get: ['99'], give: [] } };
         const result = validateOffer(
             offer([card(1), card(1)], [card(99), card(99), card(99), card(99)]),
@@ -167,7 +167,7 @@ describe('Soft-Blacklist', () => {
         expect(result.errorLines).toContain('🔴 Cross trading contains soft blacklisted game');
     });
 
-    test('soft blacklisted Spiel in 1:1-Trade → angenommen (1:1 wird zuerst herausgefiltert)', () => {
+    test('soft blacklisted game in 1:1 trade → accepted (1:1 is filtered out first)', () => {
         const config = { ...DEFAULT_CONFIG, softBlacklist: { get: ['99'], give: ['99'] } };
         const result = validateOffer(
             offer([card(99), card(99)], [card(99), card(99)]),
@@ -176,7 +176,7 @@ describe('Soft-Blacklist', () => {
         expect(result.accepted).toBe(true);
     });
 
-    test('soft blacklisted Spiel in give → abgelehnt', () => {
+    test('soft blacklisted game in give → declined', () => {
         const config = { ...DEFAULT_CONFIG, softBlacklist: { get: [], give: ['99'] } };
         const result = validateOffer(
             offer([card(99), card(99)], [card(2), card(2), card(2), card(2)]),
@@ -186,10 +186,10 @@ describe('Soft-Blacklist', () => {
     });
 });
 
-// ─── Foil-Karten ─────────────────────────────────────────────────────────────
+// ─── Foil cards ──────────────────────────────────────────────────────────────
 
-describe('Foil-Karten', () => {
-    test('1 Foil abgeben, 2 Foil erhalten → angenommen', () => {
+describe('Foil cards', () => {
+    test('give 1 foil, receive 2 foil → accepted', () => {
         const result = validateOffer(
             offer([card(1, 'cardborder_1')], [card(2, 'cardborder_1'), card(2, 'cardborder_1')]),
             DEFAULT_CONFIG
@@ -197,7 +197,7 @@ describe('Foil-Karten', () => {
         expect(result.accepted).toBe(true);
     });
 
-    test('gemischter Trade: 1 normal + 1 foil abgeben, je 2 erhalten → angenommen', () => {
+    test('mixed trade: give 1 normal + 1 foil, receive 2 each → accepted', () => {
         const result = validateOffer(
             offer(
                 [card(1, 'cardborder_0'), card(1, 'cardborder_1')],
@@ -208,7 +208,7 @@ describe('Foil-Karten', () => {
         expect(result.accepted).toBe(true);
     });
 
-    test('Foil abgeben, nur normale Karten erhalten → abgelehnt (Foil-Ratio stimmt nicht)', () => {
+    test('give foil, receive only normal cards → declined (foil ratio wrong)', () => {
         const result = validateOffer(
             offer([card(1, 'cardborder_1')], [card(2, 'cardborder_0'), card(2, 'cardborder_0')]),
             DEFAULT_CONFIG
@@ -217,10 +217,10 @@ describe('Foil-Karten', () => {
     });
 });
 
-// ─── Sale-Karten: Sonderfall "get" ───────────────────────────────────────────
+// ─── Sale cards: special case "get" ─────────────────────────────────────────
 
-describe('Sale-Karten: get (1 Special erhalten, 2 normale abgeben)', () => {
-    test('1 Sale-Karte erhalten, 2 normale abgeben → angenommen', () => {
+describe('Sale cards: get (receive 1 special, give 2 normal)', () => {
+    test('receive 1 sale card, give 2 normal → accepted', () => {
         const config = { ...DEFAULT_CONFIG, saleMarketFeeAppIdGet: '999' };
         const result = validateOffer(
             offer([card(1), card(1)], [card('999')]),
@@ -229,7 +229,7 @@ describe('Sale-Karten: get (1 Special erhalten, 2 normale abgeben)', () => {
         expect(result.accepted).toBe(true);
     });
 
-    test('1 Sale-Karte erhalten, nur 1 normale abgeben → abgelehnt (zu wenig abgegeben)', () => {
+    test('receive 1 sale card, give only 1 normal → declined (too few given)', () => {
         const config = { ...DEFAULT_CONFIG, saleMarketFeeAppIdGet: '999' };
         const result = validateOffer(
             offer([card(1)], [card('999')]),
@@ -239,10 +239,10 @@ describe('Sale-Karten: get (1 Special erhalten, 2 normale abgeben)', () => {
     });
 });
 
-// ─── Sale-Karten: Sonderfall "give" ──────────────────────────────────────────
+// ─── Sale cards: special case "give" ────────────────────────────────────────
 
-describe('Sale-Karten: give (1 Special abgeben, 3 normale erhalten)', () => {
-    test('1 Sale-Karte abgeben, 3 normale erhalten → angenommen', () => {
+describe('Sale cards: give (give 1 special, receive 3 normal)', () => {
+    test('give 1 sale card, receive 3 normal → accepted', () => {
         const config = { ...DEFAULT_CONFIG, saleMarketFeeAppIdGive: ['999'] };
         const result = validateOffer(
             offer([card('999')], [card(2), card(2), card(2)]),
@@ -251,9 +251,9 @@ describe('Sale-Karten: give (1 Special abgeben, 3 normale erhalten)', () => {
         expect(result.accepted).toBe(true);
     });
 
-    test('1 Sale-Karte abgeben, nur 2 normale erhalten → abgelehnt', () => {
-        // saleMarketFeeAppIdGet muss gesetzt sein damit der Sale-Karten-Block überhaupt läuft
-        // (Original-Verhalten: beide Sale-Prüfungen sind im selben if-Block)
+    test('give 1 sale card, receive only 2 normal → declined', () => {
+        // saleMarketFeeAppIdGet must be set, else the sale card block does not run
+        // (original behavior: both sale checks are in the same if block)
         const config = {
             ...DEFAULT_CONFIG,
             saleMarketFeeAppIdGet: 'nonexistent',
@@ -267,7 +267,7 @@ describe('Sale-Karten: give (1 Special abgeben, 3 normale erhalten)', () => {
         expect(result.errorLines).toContain('🔴 Found error within sale card trading');
     });
 
-    test('2 Sale-Karten abgeben, 6 normale erhalten → angenommen', () => {
+    test('give 2 sale cards, receive 6 normal → accepted', () => {
         const config = { ...DEFAULT_CONFIG, saleMarketFeeAppIdGive: ['999'] };
         const result = validateOffer(
             offer([card('999'), card('999')], [card(2), card(2), card(2), card(2), card(2), card(2)]),
@@ -277,10 +277,32 @@ describe('Sale-Karten: give (1 Special abgeben, 3 normale erhalten)', () => {
     });
 });
 
+describe('Regressions', () => {
+    test('non-trading card → errorLines is set', () => {
+        const result = validateOffer(offer([], [nonCard(1)]), DEFAULT_CONFIG);
+        expect(result.accepted).toBe(false);
+        expect(result.errorLines).toContain('🔴 Found something other than a trading card in trade.');
+    });
+
+    test('give 2 sale cards, receive 6 normal, sale get set → accepted', () => {
+        const config = { ...DEFAULT_CONFIG, saleMarketFeeAppIdGet: '555', saleMarketFeeAppIdGive: ['999'] };
+        const result = validateOffer(
+            offer([card('999'), card('999')], [card(2), card(2), card(2), card(2), card(2), card(2)]),
+            config
+        );
+        expect(result.accepted).toBe(true);
+    });
+
+    test('give card with unknown border → declined', () => {
+        const result = validateOffer(offer([card(1, null)], [card(2), card(2)]), DEFAULT_CONFIG);
+        expect(result.accepted).toBe(false);
+    });
+});
+
 // ─── Mapper: mapSteamOffer ────────────────────────────────────────────────────
 
 describe('mapSteamOffer', () => {
-    // Erstellt ein simuliertes Steam-Item-Objekt (wie es von der Library kommt)
+    // Creates a simulated Steam item object (as the library returns it)
     function steamItem(appId, name, border = 'cardborder_0') {
         return {
             market_fee_app: appId,
@@ -294,7 +316,7 @@ describe('mapSteamOffer', () => {
         };
     }
 
-    test('Steam-Item wird korrekt auf TradeItem gemappt', () => {
+    test('Steam item maps correctly to TradeItem', () => {
         const item = mapSteamItem(steamItem(420, 'Companion Cube'));
         expect(item.appId).toBe('420');
         expect(item.name).toBe('Companion Cube');
@@ -302,13 +324,13 @@ describe('mapSteamOffer', () => {
         expect(item.isTradingCard).toBe(true);
     });
 
-    test('Foil-Karte wird korrekt erkannt', () => {
+    test('foil card is detected correctly', () => {
         const item = mapSteamItem(steamItem(420, 'Companion Cube Foil', 'cardborder_1'));
         expect(item.border).toBe('cardborder_1');
         expect(item.isTradingCard).toBe(true);
     });
 
-    test('Steam-Offer wird vollständig gemappt', () => {
+    test('Steam offer maps completely', () => {
         const steamOffer = {
             id: 'offer-123',
             itemsToReceive: [steamItem(1, 'Card A')],

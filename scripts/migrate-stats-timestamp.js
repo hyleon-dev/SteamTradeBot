@@ -1,6 +1,6 @@
-// Standalone-Migration: konvertiert die stats-Tabelle von day/month/year/week auf timestamp.
-// Nutzung:  node scripts/migrate-stats-timestamp.js   (respektiert DB_PATH)
-// Hinweis:  Bot vorher stoppen – die DB sollte nicht parallel geschrieben werden.
+// Standalone migration: converts the stats table from day/month/year/week to timestamp.
+// Usage:  node scripts/migrate-stats-timestamp.js   (respects DB_PATH)
+// Note:   Stop the bot first. Nothing else may write to the DB at the same time.
 const path = require('path');
 const Database = require('better-sqlite3');
 const {migrateStatsToTimestamp} = require('../migrations');
@@ -12,14 +12,14 @@ const columns = () => db.prepare('PRAGMA table_info(stats)').all().map(
     c => c.name);
 
 console.log(`DB: ${dbPath}`);
-console.log('stats-Spalten vorher :',
-    columns().join(', ') || '(keine stats-Tabelle)');
+console.log('stats columns before:',
+    columns().join(', ') || '(no stats table)');
 
 const result = migrateStatsToTimestamp(db);
 
-console.log('stats-Spalten nachher:', columns().join(', '));
+console.log('stats columns after: ', columns().join(', '));
 console.log(result.migrated
-    ? `✅ Migriert: ${result.rows} Zeilen auf timestamp umgestellt.`
-    : 'ℹ️  Nichts zu migrieren (Schema ist bereits aktuell).');
+    ? `✅ Migrated: ${result.rows} rows converted to timestamp.`
+    : 'ℹ️  Nothing to migrate (schema is already up to date).');
 
 db.close();

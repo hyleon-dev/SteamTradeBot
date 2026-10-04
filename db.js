@@ -3,7 +3,7 @@ const { migrateStatsToTimestamp } = require('./migrations');
 
 const db = new Database(process.env.DB_PATH || 'metrics.db');
 
-// V 1.0 - init / V 1.3 - stats nutzt jetzt timestamp statt day/month/year/week
+// V 1.0 - init / V 1.3 - stats uses timestamp instead of day/month/year/week
 db.exec(`
   CREATE TABLE IF NOT EXISTS stats (
     trade_id TEXT PRIMARY KEY,
@@ -40,8 +40,8 @@ db.exec(`
     );
 `);
 
-// Bestehende DBs vom alten stats-Schema (day/month/year/week) auf timestamp migrieren.
-// Muss vor den prepare()-Statements laufen, damit die timestamp-Spalte existiert.
+// Migrate existing DBs from the old stats schema (day/month/year/week) to timestamp.
+// Must run before the prepare() statements, so the timestamp column exists.
 migrateStatsToTimestamp(db);
 
 const upsertStat = db.prepare(`
@@ -50,7 +50,7 @@ const upsertStat = db.prepare(`
 `);
 
 const upsertMessage = db.prepare(`
-    INSERT INTO messages (message_id, sender_id, timestamp, message_text)
+    INSERT OR IGNORE INTO messages (message_id, sender_id, timestamp, message_text)
     VALUES (@message_id, @sender_id, DATETIME(@unixtimestemp, 'unixepoch'), @message_text)
 `)
 

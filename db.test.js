@@ -2,7 +2,7 @@ const os = require('os');
 const path = require('path');
 const fs = require('fs');
 
-// Frische In-File-DB pro Testlauf, damit metrics.db nicht berührt wird.
+// Fresh file DB per test run, so metrics.db is not touched.
 const TMP_DB = path.join(os.tmpdir(), `stb-test-${process.pid}.db`);
 process.env.DB_PATH = TMP_DB;
 
@@ -28,7 +28,7 @@ const baseTrade = (over = {}) => ({
 });
 
 describe('logTrade / getTrades', () => {
-    test('speichert einen Trade mit geparsten Items und Counts', () => {
+    test('stores a trade with parsed items and counts', () => {
         logTrade(baseTrade());
         const [t] = getTrades({ limit: 10 });
         expect(t.trade_id).toBe('t1');
@@ -39,7 +39,7 @@ describe('logTrade / getTrades', () => {
         expect(t.items_to_give[0].name).toBe('C');
     });
 
-    test('INSERT OR REPLACE: gleiche trade_id überschreibt statt zu werfen', () => {
+    test('INSERT OR REPLACE: same trade_id overwrites instead of throwing', () => {
         logTrade(baseTrade({ accepted: false, reason: ['Cross trading does not add up'] }));
         const rows = getTrades({ limit: 10 });
         expect(rows.filter(r => r.trade_id === 't1')).toHaveLength(1);
@@ -54,7 +54,7 @@ describe('logTrade / getTrades', () => {
         expect(getTrades({ accepted: false }).every(t => !t.accepted)).toBe(true);
     });
 
-    test('Zeitraum-Filter', () => {
+    test('time range filter', () => {
         const only = getTrades({ from: Date.UTC(2026, 0, 15), to: Date.UTC(2026, 0, 16) });
         expect(only.length).toBeGreaterThan(0);
         expect(getTrades({ from: Date.UTC(2030, 0, 1) })).toHaveLength(0);
@@ -62,8 +62,8 @@ describe('logTrade / getTrades', () => {
 });
 
 describe('getTradeAggregates', () => {
-    test('gruppiert nach Tag und summiert nur angenommene Karten', () => {
-        // Eigene Daten auf einem eindeutigen Tag – unabhängig von der Testreihenfolge.
+    test('groups by day and sums only accepted cards', () => {
+        // Own data on a unique day. Independent of the test order.
         const ts = Date.UTC(2026, 5, 20, 12, 0, 0); // 2026-06-20
         logTrade(baseTrade({ trade_id: 'agg-acc', timestamp: ts, accepted: true }));
         logTrade(baseTrade({ trade_id: 'agg-dec', timestamp: ts, accepted: false, reason: ['x'] }));
@@ -72,14 +72,14 @@ describe('getTradeAggregates', () => {
         expect(bucket).toBeDefined();
         expect(bucket.trades).toBe(2);
         expect(bucket.accepted).toBe(1);
-        // nur der akzeptierte Trade zählt (2 erhalten / 1 gegeben)
+        // only the accepted trade counts (2 received / 1 given)
         expect(bucket.gained).toBe(2);
         expect(bucket.given).toBe(1);
     });
 });
 
 describe('logOffer (stats)', () => {
-    test('schreibt gained/given mit timestamp', () => {
+    test('writes gained/given with timestamp', () => {
         logOffer({
             id: 'o1',
             created: new Date(Date.UTC(2026, 0, 15, 9, 30, 0)),
@@ -94,7 +94,7 @@ describe('logOffer (stats)', () => {
 });
 
 describe('migrateStatsToTimestamp', () => {
-    test('konvertiert altes day/month/year/week-Schema auf timestamp', () => {
+    test('converts old day/month/year/week schema to timestamp', () => {
         const mem = new Database(':memory:');
         mem.exec(`CREATE TABLE stats (trade_id TEXT PRIMARY KEY, day TEXT, month TEXT, year TEXT, week TEXT, gained INTEGER, given INTEGER);`);
         mem.prepare(`INSERT INTO stats VALUES (@id,@d,@m,@y,@w,@g,@gi)`)
@@ -107,16 +107,16 @@ describe('migrateStatsToTimestamp', () => {
         expect(cols).toEqual(['trade_id', 'timestamp', 'gained', 'given']);
 
         const row = mem.prepare('SELECT * FROM stats WHERE trade_id = ?').get('x1');
-        expect(row.timestamp).toBe(Date.UTC(2026, 0, 15, 0, 0, 0)); // Mitternacht UTC
+        expect(row.timestamp).toBe(Date.UTC(2026, 0, 15, 0, 0, 0)); // midnight UTC
         expect(row.gained).toBe(4);
         expect(row.given).toBe(2);
 
-        // Zweiter Aufruf = No-op
+        // Second call = no-op
         expect(migrateStatsToTimestamp(mem)).toEqual({ migrated: false, rows: 0 });
         mem.close();
     });
 
-    test('No-op wenn bereits neues Schema', () => {
+    test('no-op if schema is already new', () => {
         const mem = new Database(':memory:');
         mem.exec(`CREATE TABLE stats (trade_id TEXT PRIMARY KEY, timestamp INTEGER, gained INTEGER, given INTEGER);`);
         expect(migrateStatsToTimestamp(mem)).toEqual({ migrated: false, rows: 0 });
