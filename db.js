@@ -125,13 +125,23 @@ const GROUP_EXPR = {
 
 function getTradeAggregates({ groupBy = 'day' } = {}) {
     const expr = GROUP_EXPR[groupBy] || GROUP_EXPR.day;
+    // trades has all offers since V 1.2. stats has accepted and confirmed trades,
+    // also older ones. Use both. A trade in both tables counts once (trades wins).
     return db.prepare(`
+        WITH combined AS (
+            SELECT timestamp, accepted, receive_count, give_count
+            FROM trades
+            UNION ALL
+            SELECT timestamp, 1, gained, given
+            FROM stats
+            WHERE trade_id NOT IN (SELECT trade_id FROM trades)
+        )
         SELECT ${expr} AS bucket,
                COUNT(*) AS trades,
                SUM(accepted) AS accepted,
                SUM(CASE WHEN accepted = 1 THEN receive_count ELSE 0 END) AS gained,
                SUM(CASE WHEN accepted = 1 THEN give_count ELSE 0 END) AS given
-        FROM trades
+        FROM combined
         GROUP BY bucket
         ORDER BY bucket ASC
     `).all();

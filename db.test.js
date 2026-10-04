@@ -76,6 +76,27 @@ describe('getTradeAggregates', () => {
         expect(bucket.gained).toBe(2);
         expect(bucket.given).toBe(1);
     });
+
+    test('includes stats-only trades as accepted', () => {
+        logOffer({
+            id: 'agg-stats-only',
+            created: new Date(Date.UTC(2026, 6, 1, 8, 0, 0)), // 2026-07-01
+            itemsToReceive: [{}, {}, {}],
+            itemsToGive: [{}],
+        });
+
+        const bucket = getTradeAggregates({ groupBy: 'day' }).find(r => r.bucket === '2026-07-01');
+        expect(bucket).toEqual({ bucket: '2026-07-01', trades: 1, accepted: 1, gained: 3, given: 1 });
+    });
+
+    test('trade in trades and stats counts once', () => {
+        const ts = Date.UTC(2026, 6, 2, 8, 0, 0); // 2026-07-02
+        logTrade(baseTrade({ trade_id: 'agg-both', timestamp: ts, accepted: true }));
+        logOffer({ id: 'agg-both', created: new Date(ts), itemsToReceive: [{}, {}], itemsToGive: [{}] });
+
+        const bucket = getTradeAggregates({ groupBy: 'day' }).find(r => r.bucket === '2026-07-02');
+        expect(bucket).toEqual({ bucket: '2026-07-02', trades: 1, accepted: 1, gained: 2, given: 1 });
+    });
 });
 
 describe('logOffer (stats)', () => {
