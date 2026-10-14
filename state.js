@@ -3,6 +3,7 @@
 const state = {
   startedAt: Date.now(),
   loggedOn: false,
+  botSteamId: null,      // SteamID64 of the bot. Set on first login, kept after logout.
   reconnectAttempts: 0,
   lastHeartbeat: null,   // Unix ms of the last successful Uptime Kuma ping
   lastError: null,       // { message, at } of the last Steam client error

@@ -6,9 +6,10 @@ const logger = require('./logger');
 const CACHE_DIR = path.join(__dirname, 'image_cache');
 
 class TradeItem {
-    constructor({ appId, name, type, border, image_url, isTradingCard }) {
+    constructor({ appId, name, market_hash_name, type, border, image_url, isTradingCard }) {
         this.appId = appId;           // market_fee_app as string
         this.name = name;             // card name
+        this.market_hash_name = market_hash_name; // name in the Steam market URL
         this.type = type;             // e.g. "Portal 2 Trading Card"
         this.border = border;         // "cardborder_0" (normal) | "cardborder_1" (foil)
         this.image_url = image_url;   // card image
@@ -28,6 +29,7 @@ function mapSteamItem(steamItem) {
     return new TradeItem({
         appId: String(steamItem.market_fee_app),
         name: steamItem.name,
+        market_hash_name: steamItem.market_hash_name,
         type: steamItem.type,
         border: steamItem.tags.find(t => t.category === "cardborder")?.internal_name,
         image_url: steamItem.icon_url_large,   // raw Steam image ID. /images/:id caches the image on first use

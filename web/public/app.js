@@ -109,23 +109,129 @@ function drawChart(existing, canvasId, labels, series, title) {
 $('#groupBy').addEventListener('change', loadDashboard);
 
 // ---- Trades ----
+const STEAM_IMAGE_URL = 'https://community.akamai.steamstatic.com/economy/image/';
+
+// Trades of the last load, by trade_id. The detail dialog reads from here.
+let tradesById = new Map();
+
+function itemIcon(item) {
+  return `<img src="${STEAM_IMAGE_URL}${encodeURIComponent(item.image_url || '')}" width="32" height="32" alt="" title="${escapeHtml(item.name || '')}">`;
+}
+
 // highlightId: trade_id of a new trade. Its row gets a short highlight.
 async function loadTrades(highlightId) {
   const filter = $('#tradeFilter').value;
   const q = filter === '' ? '' : `?accepted=${filter}`;
   const trades = await api(`/api/trades${q}`);
+  tradesById = new Map(trades.map(t => [String(t.trade_id), t]));
   const tbody = $('#tradesTable tbody');
   tbody.innerHTML = trades.map(t => `
-        <tr${t.trade_id === highlightId ? ' class="row-new"' : ''}>
+        <tr class="trade-row${t.trade_id === highlightId ? ' row-new' : ''}" data-trade-id="${escapeHtml(String(t.trade_id))}" tabindex="0">
             <td>${new Date(t.timestamp).toLocaleString('en-GB')}</td>
             <td>${escapeHtml(t.partner_name || t.partner_id || '?')}</td>
-            <td class="items-td">${t.items_to_receive.map(item => `<img src="https://community.akamai.steamstatic.com/economy/image/${item.image_url}" width="32" height="32" alt="" title="${escapeHtml(item.name || '')}">`).join('')}</td>
-            <td class="items-td">${t.items_to_give.map(item => `<img src="https://community.akamai.steamstatic.com/economy/image/${item.image_url}" width="32" height="32" alt="" title="${escapeHtml(item.name || '')}">`).join('')}</td>
+            <td class="items-td">${t.items_to_receive.map(itemIcon).join('')}</td>
+            <td class="items-td">${t.items_to_give.map(itemIcon).join('')}</td>
             <td class="${t.accepted ? 'status-accepted'
       : 'status-declined'}">${t.accepted ? '✅ Accepted' : '❌ Declined'}</td>
             <td>${t.reason ? escapeHtml(t.reason.join('; ')) : ''}</td>
         </tr>`).join('') || '<tr><td colspan="6">No trades</td></tr>';
 }
+
+// ---- Trade detail dialog ----
+// Steam type is e.g. "Portal 2 Foil Trading Card". Game name is the part before.
+function gameFromType(type) {
+  return (type || '').replace(/ (Foil )?Trading Card$/, '') || '?';
+}
+
+// SteamID64 of the bot from /api/status. Null until the bot logged in once.
+let botSteamId = null;
+
+// Badge page of the bot. Only visible if the bot profile is public.
+function badgeUrl(item, foil) {
+  return `https://steamcommunity.com/profiles/${encodeURIComponent(botSteamId)}/gamecards/${encodeURIComponent(item.appId)}/${foil ? '?border=1' : ''}`;
+}
+
+// Steam app 753 holds all trading cards. Old trades have no market_hash_name.
+// Then use the market search for the card name.
+function marketUrl(item) {
+  if (item.market_hash_name) {
+    return `https://steamcommunity.com/market/listings/753/${encodeURIComponent(item.market_hash_name)}`;
+  }
+  const params = new URLSearchParams({appid: '753', q: item.name || ''});
+  return `https://steamcommunity.com/market/search?${params}`;
+}
+
+function itemCard(item) {
+  const foil = item.border === 'cardborder_1';
+  return `<figure class="card${foil ? ' foil' : ''}">
+        <img src="${STEAM_IMAGE_URL}${encodeURIComponent(item.image_url || '')}" alt="${escapeHtml(item.name || '')}" loading="lazy">
+        <figcaption>
+            <div class="card-name">${escapeHtml(item.name || '?')}</div>
+            <div class="card-game">${escapeHtml(gameFromType(item.type))}${foil ? ' <span class="badge foil">Foil</span>' : ''}</div>
+        </figcaption>
+        <div class="card-links">
+            ${botSteamId ? `<a class="link-button" href="${escapeHtml(badgeUrl(item, foil))}" target="_blank" rel="noopener noreferrer">Badge</a>` : ''}
+            <a class="link-button" href="${escapeHtml(marketUrl(item))}" target="_blank" rel="noopener noreferrer">Market</a>
+        </div>
+    </figure>`;
+}
+
+function itemSection(title, items) {
+  const body = items.length ? items.map(itemCard).join('')
+      : '<p class="hint">No cards</p>';
+  return `<section class="trade-side"><h3>${title} (${items.length})</h3><div class="card-grid">${body}</div></section>`;
+}
+
+async function openTradeDialog(trade) {
+  if (!botSteamId) {
+    try {
+      botSteamId = (await api('/api/status')).botSteamId;
+    } catch (err) {
+      console.error('Could not load bot SteamID', err);
+    }
+  }
+  const status = trade.accepted
+      ? '<span class="status-accepted">✅ Accepted</span>'
+      : '<span class="status-declined">❌ Declined</span>';
+  const reason = trade.reason?.length
+      ? `<div class="trade-reason">${escapeHtml(trade.reason.join('; '))}</div>` : '';
+  $('#tradeDialogBody').innerHTML = `
+        <div class="trade-meta">
+            <span>${new Date(trade.timestamp).toLocaleString('en-GB')}</span>
+            <span>${escapeHtml(trade.partner_name || trade.partner_id || '?')}</span>
+            ${status}
+        </div>
+        ${reason}
+        <div class="trade-sides">
+            ${itemSection('Received', trade.items_to_receive)}
+            ${itemSection('Given', trade.items_to_give)}
+        </div>`;
+  $('#tradeDialog').showModal();
+}
+
+function openTradeFromRow(target) {
+  const row = target.closest('tr[data-trade-id]');
+  const trade = row && tradesById.get(row.dataset.tradeId);
+  if (trade) {
+    openTradeDialog(trade);
+  }
+}
+
+$('#tradesTable tbody').addEventListener('click', e => openTradeFromRow(e.target));
+$('#tradesTable tbody').addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    openTradeFromRow(e.target);
+  }
+});
+$('#tradeDialog .dialog-close').addEventListener('click',
+    () => $('#tradeDialog').close());
+// Click on the backdrop closes the dialog. Backdrop clicks hit the dialog element itself.
+$('#tradeDialog').addEventListener('click', e => {
+  if (e.target === e.currentTarget) {
+    e.currentTarget.close();
+  }
+});
 /*
 <td className="items-td">${t.items_to_receive.map(item => `<img src="/images/${encodeURIComponent(item.image_url)}" width="32" height="32" alt="" title="${escapeHtml(item.name || '')}">`).join('')}</td>
 <td className="items-td">${t.items_to_give.map(item => `<img src="/images/${encodeURIComponent(item.image_url)}" width="32" height="32" alt="" title="${escapeHtml(item.name || '')}">`).join('')}</td>

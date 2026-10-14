@@ -338,3 +338,164 @@ th {
   font-size: 16px;
   margin-top: 4px;
 }
+
+/* Trade rows open the detail dialog. */
+.trade-row {
+  cursor: pointer;
+}
+
+.trade-row:hover, .trade-row:focus-visible {
+  background: var(--panel-2);
+  outline: none;
+}
+
+/* Trade detail dialog. No padding on the dialog itself, so a click on the dialog element is a backdrop click. */
+#tradeDialog {
+  width: min(1200px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  padding: 0;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+#tradeDialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.dialog-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.dialog-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.dialog-close {
+  background: transparent;
+  color: var(--muted);
+  padding: 4px 10px;
+  font-size: 18px;
+}
+
+#tradeDialogBody {
+  padding: 16px 20px 20px;
+}
+
+.trade-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.trade-reason {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Received and Given side by side. 1 column on small screens. */
+.trade-sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+@media (max-width: 760px) {
+  .trade-sides {
+    grid-template-columns: 1fr;
+  }
+}
+
+.trade-side {
+  min-width: 0;
+}
+
+.trade-side h3 {
+  margin: 20px 0 10px;
+  font-size: 15px;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.card.foil {
+  border-color: #c9a8ff;
+}
+
+.card img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+.card figcaption {
+  margin-top: 6px;
+}
+
+.card-name {
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.card-game {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* margin-top auto puts the buttons at the bottom of the card. */
+.card-links {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.link-button {
+  flex: 1;
+  padding: 5px 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text);
+  text-decoration: none;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.link-button:hover, .link-button:focus-visible {
+  border-color: var(--accent);
+}
+
+.badge.foil {
+  background: #3b2a5a;
+  color: #d9c4ff;
+  margin-left: 4px;
+}

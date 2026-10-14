@@ -112,7 +112,7 @@ steamClient.on('loggedOn', () => {
     reconnectAttempts = 0;
     // steam-user has no 'connected' event. So set the flag here.
     wasConnected = true;
-    state.set({ loggedOn: true, reconnectAttempts: 0 });
+    state.set({ loggedOn: true, reconnectAttempts: 0, botSteamId: steamClient.steamID.getSteamID64() });
     logger.info(`Logged into Steam`);
     sendDiscordMessage("🤖 Beep boop! I'm alive!")
     steamClient.setPersona(SteamUser.EPersonaState.Online);
