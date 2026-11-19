@@ -53,51 +53,46 @@ function itemsToText(items) {
     return `[${items.map(item => `'${item.name} (${item.type})'`)}]`;
 }
 
-function countByBorder(items, borderName) {
-    return items.filter(item => item.border === borderName).length;
+// Readable card name, e.g. "Companion Cube (Portal 2, Foil)".
+function cardLabel(item) {
+    if (!item.isTradingCard) return `${item.name} (${item.type})`;
+    const foil = item.border === 'cardborder_1' ? ', Foil' : '';
+    return `${item.name} (${trimItemType(item.type)}${foil})`;
 }
 
-function pushBlacklistWarning(lines, type, direction, games) {
-    if (games.length > 0) {
-        const label = games.length === 1 ? 'game' : 'games';
-        lines.push(`🚩 ${type} blacklisted ${label} to ${direction} found: ${games.join(', ')} \n`);
-    }
+// Card list with counts, e.g. "2× A (Game), B (Game)".
+function formatCards(items) {
+    const counts = new Map();
+    items.forEach(item => {
+        const label = cardLabel(item);
+        counts.set(label, (counts.get(label) || 0) + 1);
+    });
+    return Array.from(counts, ([label, count]) => (count > 1 ? `${count}× ${label}` : label)).join(', ');
 }
 
+// Splits items into allowed and blocked items. Groups allowed items by app + border.
 function buildItemMap(items, blacklist) {
     const map = new Map();
-    const blacklistedGames = [];
-    let includesBlacklisted = false;
+    const blocked = [];
     items.forEach(item => {
-        if (!blacklist.includes(item.appId)) {
-            const key = item.appId + "_" + item.border;
-            if (map.has(key)) map.get(key).push(item);
-            else map.set(key, [item]);
-        } else {
-            includesBlacklisted = true;
-            const game = trimItemType(item.type);
-            if (!blacklistedGames.includes(game)) blacklistedGames.push(game);
+        if (blacklist.includes(item.appId)) {
+            blocked.push(item);
+            return;
         }
+        const key = item.appId + "_" + item.border;
+        if (map.has(key)) map.get(key).push(item);
+        else map.set(key, [item]);
     });
-    return { map, blacklistedGames, includesBlacklisted };
+    return { map, blocked };
 }
 
 function filterSoftBlacklist(itemsMap, blacklist) {
     const items = [];
-    const blacklistedGames = [];
-    let includesBlacklisted = false;
+    const blocked = [];
     itemsMap.forEach(mapItems => {
-        mapItems.forEach(item => {
-            if (!blacklist.includes(item.appId)) {
-                items.push(item);
-            } else {
-                includesBlacklisted = true;
-                const game = trimItemType(item.type);
-                if (!blacklistedGames.includes(game)) blacklistedGames.push(game);
-            }
-        });
+        mapItems.forEach(item => (blacklist.includes(item.appId) ? blocked : items).push(item));
     });
-    return { items, blacklistedGames, includesBlacklisted };
+    return { items, blocked };
 }
 
 // Counts items per market_hash_name. Normal and foil have different names.
@@ -124,40 +119,58 @@ function findLastCopies(offer, softGiveIds, ownedCounts) {
     return lost;
 }
 
+// Checks all rules. Does not stop at the first problem.
+// reasons: [{ code, text, clear }]. clear = bot can decline without a manual check.
 function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppIdGet, saleMarketFeeAppIdGive, ownedCounts = null }) {
-    let itemsToReceive = Array.from(offer.itemsToReceive);
-    let itemsToGive = Array.from(offer.itemsToGive);
-    let saleCardsToGiveValid = true;
-    let includesHardBlacklisted = false;
-    let includesSoftBlacklisted = false;
+    const reasons = [];
     const discordLines = [];
-    const errorLines = [];
+    const addReason = (code, text, clear = false) => reasons.push({ code, text: `🔴 ${text}`, clear });
 
-    // Check that all items are trading cards
-    const itemsToReceiveAreTradingCards = itemsToReceive.every(item => item.isTradingCard);
-    const itemsToGiveAreTradingCards = itemsToGive.every(item => item.isTradingCard);
-
-    if (!itemsToReceiveAreTradingCards || !itemsToGiveAreTradingCards) {
-        // errorLines must be set. index.js spreads it into the Discord message.
-        const error = '🔴 Found something other than a trading card in trade.';
-        return { accepted: false, discordLines: [error], errorLines: [error] };
+    // Items that are not trading cards. They are reported and not checked further.
+    const nonCardsGive = offer.itemsToGive.filter(item => !item.isTradingCard);
+    const nonCardsReceive = offer.itemsToReceive.filter(item => !item.isTradingCard);
+    if (nonCardsGive.length > 0) {
+        addReason('non_card_give', `Bot would give items that are not trading cards: ${formatCards(nonCardsGive)}`, true);
     }
+    if (nonCardsReceive.length > 0) {
+        // Not a clear case. Received extras can be a gift.
+        addReason('non_card_get', `Bot would get items that are not trading cards: ${formatCards(nonCardsReceive)}`);
+    }
+    let itemsToGive = offer.itemsToGive.filter(item => item.isTradingCard);
+    let itemsToReceive = offer.itemsToReceive.filter(item => item.isTradingCard);
 
     // Soft-give games: only duplicates may leave the inventory
-    const lastCopies = findLastCopies(offer, softBlacklist.give, ownedCounts);
-    const softGiveDuplicatesValid = lastCopies !== null && lastCopies.length === 0;
+    const softGiveCards = itemsToGive.filter(item => softBlacklist.give.includes(item.appId));
+    const lastCopies = findLastCopies({ itemsToGive, itemsToReceive }, softBlacklist.give, ownedCounts);
     if (lastCopies === null) {
-        discordLines.push('🚩 Bot inventory not loaded. Cannot check duplicates of soft blacklisted games. \n');
+        addReason('inventory_missing', `Bot inventory could not be loaded. Cannot check if these protected cards are duplicates: ${formatCards(softGiveCards)}`);
     } else if (lastCopies.length > 0) {
-        discordLines.push(`🚩 Bot would give last copy of: ${lastCopies.join(', ')} \n`);
+        // Last copy is a clear case only in an N:N offer where each given card is blocked.
+        // A card is blocked if the bot may give 0 copies of it (has at most 1, received copies included).
+        // If one given card is fine, a manual check is needed.
+        const receivedByName = countByName(itemsToReceive);
+        const isEvenSwap = nonCardsGive.length === 0 && nonCardsReceive.length === 0
+            && itemsToGive.length > 0 && itemsToGive.length === itemsToReceive.length;
+        const allGivenBlocked = itemsToGive.every(item => softBlacklist.give.includes(item.appId)
+            && (ownedCounts.get(item.market_hash_name) || 0) + (receivedByName.get(item.market_hash_name) || 0) <= 1);
+        const givenByName = countByName(softGiveCards);
+        const details = lastCopies.map(name => {
+            const item = softGiveCards.find(i => i.market_hash_name === name);
+            const back = receivedByName.get(name) ? `, gets back ${receivedByName.get(name)}` : '';
+            return `${cardLabel(item)}: has ${ownedCounts.get(name) || 0}, gives ${givenByName.get(name)}${back}`;
+        });
+        addReason('last_copy', `Bot would give its last copy of protected cards: ${details.join('; ')}`, isEvenSwap && allGivenBlocked);
     }
 
-    // Build item maps and filter hard blacklist
-    const { map: itemsToGiveMap, blacklistedGames: hardBLGive, includesBlacklisted: blGive } = buildItemMap(itemsToGive, hardBlacklist.give);
-    const { map: itemsToReceiveMap, blacklistedGames: hardBLReceive, includesBlacklisted: blReceive } = buildItemMap(itemsToReceive, hardBlacklist.get);
-    if (blGive || blReceive) includesHardBlacklisted = true;
-    pushBlacklistWarning(discordLines, 'Hard', 'give', hardBLGive);
-    pushBlacklistWarning(discordLines, 'Hard', 'get', hardBLReceive);
+    // Hard blacklist
+    const { map: itemsToGiveMap, blocked: neverGive } = buildItemMap(itemsToGive, hardBlacklist.give);
+    const { map: itemsToReceiveMap, blocked: neverGet } = buildItemMap(itemsToReceive, hardBlacklist.get);
+    if (neverGive.length > 0) {
+        addReason('never_give', `Bot would give cards of games it never gives (NEVER_GIVE): ${formatCards(neverGive)}`, true);
+    }
+    if (neverGet.length > 0) {
+        addReason('never_get', `Bot would get cards of games it never takes (NEVER_GET): ${formatCards(neverGet)}`);
+    }
 
     discordLines.push('↔️ Following trades will be made:');
 
@@ -182,14 +195,17 @@ function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppId
         }
     });
 
-    // Filter soft blacklist
-    const { items: filteredGive, blacklistedGames: softBLGive, includesBlacklisted: softBlGive } = filterSoftBlacklist(itemsToGiveMap, softBlacklist.give);
-    const { items: filteredReceive, blacklistedGames: softBLReceive, includesBlacklisted: softBlReceive } = filterSoftBlacklist(itemsToReceiveMap, softBlacklist.get);
+    // Soft blacklist: cards left after the 1:1 swaps are not allowed
+    const { items: filteredGive, blocked: softGiveLeft } = filterSoftBlacklist(itemsToGiveMap, softBlacklist.give);
+    const { items: filteredReceive, blocked: softGetLeft } = filterSoftBlacklist(itemsToReceiveMap, softBlacklist.get);
     itemsToGive = filteredGive;
     itemsToReceive = filteredReceive;
-    if (softBlGive || softBlReceive) includesSoftBlacklisted = true;
-    pushBlacklistWarning(discordLines, 'Soft', 'give', softBLGive);
-    pushBlacklistWarning(discordLines, 'Soft', 'get', softBLReceive);
+    if (softGiveLeft.length > 0) {
+        addReason('same_set_give', `Bot gives these protected cards only 1:1 for cards of the same set and type, but not here: ${formatCards(softGiveLeft)}`);
+    }
+    if (softGetLeft.length > 0) {
+        addReason('same_set_get', `Bot takes these cards only 1:1 for cards of the same set and type, but not here: ${formatCards(softGetLeft)}`);
+    }
 
     // Sale card logic
     const saleGetId = (saleMarketFeeAppIdGet != null && saleMarketFeeAppIdGet !== "")
@@ -219,11 +235,14 @@ function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppId
                 }
             }
         });
+    }
 
+    // Runs without "get" too. Else sale cards to give use the normal 1:2 ratio.
+    if (saleGiveIds.length > 0) {
         // Rule "give": give 1 sale card, receive 3 normal cards
         const giveSnapshot = [...itemsToGive];
         giveSnapshot.forEach(itemToGive => {
-            if (!saleGiveIds.includes(itemToGive.appId) || !saleCardsToGiveValid) return;
+            if (!saleGiveIds.includes(itemToGive.appId)) return;
             // Card was already counted in an earlier iteration (same app + border).
             if (!itemsToGive.includes(itemToGive)) return;
 
@@ -232,32 +251,39 @@ function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppId
             const conditions = receiveItems.length >= 3 && giveItems.length >= 1
                 && giveItems.length * 3 <= receiveItems.length;
 
+            if (!conditions) {
+                const type = itemToGive.border === 'cardborder_1' ? 'foil' : 'normal';
+                addReason('sale_give', `Bot gives sale cards only for 3 ${type} cards each. It gives ${formatCards(giveItems)} and needs ${giveItems.length * 3}, but gets only ${receiveItems.length}`);
+            }
+            // Remove the sale cards in both cases. A failed group is reported above and not again in the ratio check.
+            for (let i = 0; i < giveItems.length; i++) {
+                const idx = itemsToGive.indexOf(giveItems[i]);
+                if (idx !== -1) itemsToGive.splice(idx, 1);
+            }
             if (conditions) {
-                for (let i = 0; i < giveItems.length; i++) {
-                    const idx = itemsToGive.indexOf(giveItems[i]);
-                    if (idx !== -1) itemsToGive.splice(idx, 1);
-                }
                 for (let j = 0; j < giveItems.length * 3; j++) {
                     const idx = itemsToReceive.indexOf(receiveItems[j]);
                     if (idx !== -1) itemsToReceive.splice(idx, 1);
                 }
-            } else {
-                saleCardsToGiveValid = false;
             }
         });
     }
 
-    // Check cross-set ratio (give X, receive X*2 or more)
-    const normalCardsToGive    = countByBorder(itemsToGive,    "cardborder_0");
-    const normalCardsToReceive = countByBorder(itemsToReceive, "cardborder_0");
-    const foilCardsToGive      = countByBorder(itemsToGive,    "cardborder_1");
-    const foilCardsToReceive   = countByBorder(itemsToReceive, "cardborder_1");
-
-    // Cards with unknown border are not counted. Without this check the bot gives them away for nothing.
-    const allGiveBordersKnown = itemsToGive.every(item => item.border === "cardborder_0" || item.border === "cardborder_1");
-    const crossSetItemCountValid = allGiveBordersKnown
-        && normalCardsToGive * 2 <= normalCardsToReceive
-        && foilCardsToGive * 2 <= foilCardsToReceive;
+    // Check cross-set ratio (give X, receive X*2 or more). Normal and foil are counted separately.
+    const unknownBorder = itemsToGive.filter(item => item.border !== "cardborder_0" && item.border !== "cardborder_1");
+    if (unknownBorder.length > 0) {
+        // Cards with unknown border are not counted. Without this check the bot gives them away for nothing.
+        addReason('unknown_type', `Bot cannot tell if these cards are normal or foil: ${formatCards(unknownBorder)}`);
+    }
+    let crossSetItemCountValid = unknownBorder.length === 0;
+    [['cardborder_0', 'normal'], ['cardborder_1', 'foil']].forEach(([border, type]) => {
+        const give = itemsToGive.filter(item => item.border === border);
+        const receive = itemsToReceive.filter(item => item.border === border);
+        if (give.length * 2 <= receive.length) return;
+        crossSetItemCountValid = false;
+        const got = receive.length > 0 ? `: ${formatCards(receive)}` : '';
+        addReason('ratio', `Cross-set trade needs 2 ${type} cards for each ${type} card. Bot gives ${give.length} (${formatCards(give)}) and needs ${give.length * 2}, but gets ${receive.length}${got}`);
+    });
 
     // Discord lines for cross-set trades
     if (crossSetItemCountValid && itemsToGive.length > 0) {
@@ -266,26 +292,14 @@ function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppId
         }
     }
 
-    // Accept condition (same as tradeAcceptCondition in the original index.js)
-    const accepted = (itemsToGiveAreTradingCards || itemsToGive.length === 0)
-        && (crossSetItemCountValid || itemsToGive.length === 0)
-        && saleCardsToGiveValid
-        && !includesHardBlacklisted
-        && !includesSoftBlacklisted
-        && softGiveDuplicatesValid;
+    const accepted = reasons.length === 0;
+    // A clear reason declines the whole offer, also if there are other reasons.
+    const autoDecline = reasons.some(reason => reason.clear);
+    const errorLines = reasons.map(reason => reason.text);
 
-    if (!accepted) {
-        if (!itemsToGiveAreTradingCards && itemsToGive.length > 0) errorLines.push('🔴 Found something other than a trading card in trade.');
-        if (!crossSetItemCountValid && itemsToGive.length > 0) errorLines.push('🔴 Cross trading does not add up');
-        if (!saleCardsToGiveValid) errorLines.push('🔴 Found error within sale card trading');
-        if (includesHardBlacklisted) errorLines.push('🔴 Trade contains hard blacklisted game');
-        if (includesSoftBlacklisted) errorLines.push('🔴 Cross trading contains soft blacklisted game');
-        if (lastCopies === null) errorLines.push('🔴 Could not check duplicates of soft blacklisted game');
-        else if (lastCopies.length > 0) errorLines.push('🔴 Trade gives last copy of a soft blacklisted card');
-    }
-
-    return { accepted, discordLines, errorLines };
+    return { accepted, autoDecline, reasons, discordLines, errorLines };
 }
+
 // Steam image IDs can contain '/' and similar chars -> convert to a safe file name.
 function cacheFileName(id) {
     return String(id).replace(/[^A-Za-z0-9._-]/g, '_');

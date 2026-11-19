@@ -36,10 +36,24 @@ The bot checks each offer in this order. The offer is accepted only if all check
 3. **1:1 swaps of the same game.** Cards of the same game and same type (normal or foil) are swapped 1:1. These swaps are always fine, also for soft-blacklisted games.
 4. **Soft blacklist.** After step 3, a remaining card from a soft-blacklisted game declines the offer (`GIVE_ONLY_SAME_SET_DUPLICATES_APP_IDS` / `GET_ONLY_SAME_SET_APP_IDS`).
    For `GIVE_ONLY_SAME_SET_DUPLICATES_APP_IDS` games the bot also gives only duplicates. After the trade it must keep at least 1 copy of each given card (normal and foil count separately). The bot loads its inventory for this check. If the inventory does not load, the offer is declined. It does not matter if the bot already owns the card it receives.
-5. **Sale cards** (only active if `SALE_CARD_GET_1_FOR_2_APP_ID` is set):
+   Offers with these cards are checked one after the other. The given cards stay reserved until the trade is done. So two parallel offers cannot both take the last duplicate.
+5. **Sale cards** (each rule is active only if its variable is set):
    - **Get:** for each sale card the bot receives (app `SALE_CARD_GET_1_FOR_2_APP_ID`), it gives 2 normal cards.
    - **Give:** for each sale card the bot gives (apps in `SALE_CARDS_GIVE_1_FOR_3_APP_IDS`), it must receive at least 3 cards. Otherwise the offer is declined.
 6. **Cross-set ratio.** For all remaining cards: for each card the bot gives, it must receive at least 2 cards of the same type. Normal cards and foils are counted separately.
+
+**Decline reasons:** the bot runs all checks, also after the first problem. The Discord message lists every reason with the cards that cause it. The same reasons are stored with the trade and shown in the trade details.
+
+**Trade hold:** if the partner or the bot has a trade hold, the Discord message shows the days. The offer is not declined because of it.
+
+**Auto decline** (only if `AUTO_DECLINE_CLEAR_CASES=true`): the bot declines clear cases by itself and sends a Discord message. Clear cases are:
+- the bot gives an item that is not a trading card,
+- the bot gives a card from `NEVER_GIVE_APP_IDS`,
+- the offer has the same number of cards on both sides (1:1, 2:2, 3:3, …), and each card the bot gives is the last copy of a card from `GIVE_ONLY_SAME_SET_DUPLICATES_APP_IDS`.
+
+All other declined offers stay open for a manual check. For example: wrong ratio, extra items the bot receives, `NEVER_GET_APP_IDS` cards, an offer where only some given cards are last copies, or an inventory that does not load.
+
+**Mobile confirmation:** if the confirmation fails, the bot tries again 2 times (every 15 seconds). After that it sends a Discord message.
 
 Example: the bot gives 1 normal card of game A and receives 2 normal cards of game B → accepted.
 
@@ -98,6 +112,7 @@ All settings are in `.env`. You can also change them in the **Config** tab of th
 | `NEVER_GET_APP_IDS` | App IDs the bot never receives | no |
 | `GIVE_ONLY_SAME_SET_DUPLICATES_APP_IDS` | App IDs the bot gives only in 1:1 swaps of the same game, and only duplicate cards | no |
 | `GET_ONLY_SAME_SET_APP_IDS` | App IDs the bot receives only in 1:1 swaps of the same game | no |
+| `AUTO_DECLINE_CLEAR_CASES` | `true` declines clear cases automatically (see [Trade rules](#trade-rules)). Default: `false` | no |
 | `IGNORE_MESSAGES_FROM` | SteamID64s whose chat messages are not forwarded | no |
 
 Lists are comma-separated, e.g. `730,570,440`.

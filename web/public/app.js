@@ -284,6 +284,7 @@ const LABELS = {
   never_get_app_ids: 'Never get',
   give_only_same_set_duplicates_app_ids: 'Give only same-set duplicates (1:1)',
   get_only_same_set_app_ids: 'Get only in same-set swaps (1:1)',
+  auto_decline_clear_cases: 'Auto decline clear cases',
   ignore_messages_from: 'Ignore messages from',
   web_ui_enabled: 'Web UI enabled',
   web_host: 'Web Host',
@@ -298,7 +299,7 @@ const CONFIG_GROUPS = [
     full: true,
     keys: ['sale_cards_give_1_for_3_app_ids', 'sale_card_get_1_for_2_app_id',
       'never_give_app_ids', 'never_get_app_ids', 'give_only_same_set_duplicates_app_ids',
-      'get_only_same_set_app_ids', 'ignore_messages_from']
+      'get_only_same_set_app_ids', 'auto_decline_clear_cases', 'ignore_messages_from']
   },
   {
     title: 'Steam',

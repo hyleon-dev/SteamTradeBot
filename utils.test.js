@@ -31,6 +31,11 @@ function nonCard(appId) {
     });
 }
 
+// Reason codes of a result
+function codes(result) {
+    return result.reasons.map(r => r.code);
+}
+
 // Creates a TradeOffer object
 function offer(give, receive) {
     return new TradeOffer({ id: 'test-offer', itemsToGive: give, itemsToReceive: receive });
@@ -69,7 +74,7 @@ describe('Cross-Set-Trades', () => {
             DEFAULT_CONFIG
         );
         expect(result.accepted).toBe(false);
-        expect(result.errorLines).toContain('🔴 Cross trading does not add up');
+        expect(codes(result)).toContain('ratio');
     });
 
     test('give 1, receive 1 (different games) → declined', () => {
@@ -132,7 +137,7 @@ describe('Hard-Blacklist', () => {
             config
         );
         expect(result.accepted).toBe(false);
-        expect(result.errorLines).toContain('🔴 Trade contains hard blacklisted game');
+        expect(codes(result)).toContain('never_get');
     });
 
     test('hard blacklisted game in give → declined', () => {
@@ -142,16 +147,16 @@ describe('Hard-Blacklist', () => {
             config
         );
         expect(result.accepted).toBe(false);
-        expect(result.errorLines).toContain('🔴 Trade contains hard blacklisted game');
+        expect(codes(result)).toContain('never_give');
     });
 
-    test('hard blacklisted game → Discord warning contains game name', () => {
+    test('hard blacklisted game → reason names the cards', () => {
         const config = { ...DEFAULT_CONFIG, hardBlacklist: { get: ['99'], give: [] } };
         const result = validateOffer(
             offer([card(1), card(1)], [card(99), card(99), card(99), card(99)]),
             config
         );
-        expect(result.discordLines.some(l => l.includes('Hard blacklisted'))).toBe(true);
+        expect(result.errorLines.some(l => l.includes('NEVER_GET') && l.includes('4× Test Card (Game99)'))).toBe(true);
     });
 });
 
@@ -165,7 +170,7 @@ describe('Soft-Blacklist', () => {
             config
         );
         expect(result.accepted).toBe(false);
-        expect(result.errorLines).toContain('🔴 Cross trading contains soft blacklisted game');
+        expect(codes(result)).toContain('same_set_get');
     });
 
     test('soft blacklisted game in 1:1 trade → accepted (1:1 is filtered out first)', () => {
@@ -206,7 +211,7 @@ describe('Soft-Give: duplicates only', () => {
             soft(new Map([['99-A', 1]]))
         );
         expect(result.accepted).toBe(false);
-        expect(result.errorLines).toContain('🔴 Trade gives last copy of a soft blacklisted card');
+        expect(codes(result)).toContain('last_copy');
     });
 
     test('give 2 of 2 copies → declined', () => {
@@ -239,7 +244,7 @@ describe('Soft-Give: duplicates only', () => {
             soft(new Map([['99-A', 3]]))
         );
         expect(result.accepted).toBe(false);
-        expect(result.errorLines).toContain('🔴 Cross trading contains soft blacklisted game');
+        expect(codes(result)).toContain('same_set_give');
     });
 
     test('inventory not loaded → declined', () => {
@@ -248,12 +253,141 @@ describe('Soft-Give: duplicates only', () => {
             soft(null)
         );
         expect(result.accepted).toBe(false);
-        expect(result.errorLines).toContain('🔴 Could not check duplicates of soft blacklisted game');
+        expect(codes(result)).toContain('inventory_missing');
     });
 
     test('no soft-give card in offer → inventory not needed', () => {
         const result = validateOffer(offer([card(1)], [card(2), card(2)]), soft(null));
         expect(result.accepted).toBe(true);
+    });
+});
+
+// ─── Auto decline: clear cases vs. manual check ──────────────────────────────
+
+describe('Auto decline', () => {
+    const soft = (owned) => ({ ...DEFAULT_CONFIG, softBlacklist: { get: [], give: ['99'] }, ownedCounts: owned });
+
+    test('bot gives non-card item → clear case', () => {
+        const result = validateOffer(offer([nonCard(1)], [card(2), card(2)]), DEFAULT_CONFIG);
+        expect(result.autoDecline).toBe(true);
+    });
+
+    test('bot receives non-card item → manual check', () => {
+        const result = validateOffer(offer([card(1)], [nonCard(2), card(2), card(2)]), DEFAULT_CONFIG);
+        expect(result.accepted).toBe(false);
+        expect(result.autoDecline).toBe(false);
+    });
+
+    test('bot gives NEVER_GIVE card → clear case', () => {
+        const config = { ...DEFAULT_CONFIG, hardBlacklist: { get: [], give: ['99'] } };
+        const result = validateOffer(offer([card(99)], [card(2), card(2)]), config);
+        expect(result.autoDecline).toBe(true);
+    });
+
+    test('bot gets NEVER_GET card → manual check', () => {
+        const config = { ...DEFAULT_CONFIG, hardBlacklist: { get: ['99'], give: [] } };
+        const result = validateOffer(offer([card(1)], [card(99), card(99)]), config);
+        expect(result.accepted).toBe(false);
+        expect(result.autoDecline).toBe(false);
+    });
+
+    test('last copy in pure 1 for 1 offer → clear case', () => {
+        const result = validateOffer(
+            offer([card(99, 'cardborder_0', 'A')], [card(99, 'cardborder_0', 'B')]),
+            soft(new Map([['99-A', 1]]))
+        );
+        expect(result.autoDecline).toBe(true);
+    });
+
+    test('2:2, both given cards are last copies → clear case', () => {
+        const result = validateOffer(
+            offer(
+                [card(99, 'cardborder_0', 'A'), card(99, 'cardborder_0', 'B')],
+                [card(99, 'cardborder_0', 'C'), card(99, 'cardborder_0', 'D')]
+            ),
+            soft(new Map([['99-A', 1], ['99-B', 1]]))
+        );
+        expect(result.autoDecline).toBe(true);
+    });
+
+    test('3:3, all given cards are last copies, different sets → clear case', () => {
+        const config = { ...DEFAULT_CONFIG, softBlacklist: { get: [], give: ['98', '99'] }, ownedCounts: new Map([['99-A', 1], ['98-B', 1]]) };
+        const result = validateOffer(
+            offer(
+                [card(99, 'cardborder_0', 'A'), card(98, 'cardborder_0', 'B'), card(98, 'cardborder_0', 'B')],
+                [card(99, 'cardborder_0', 'C'), card(98, 'cardborder_0', 'D'), card(98, 'cardborder_0', 'E')]
+            ),
+            config
+        );
+        expect(result.autoDecline).toBe(true);
+    });
+
+    test('2:2, only one given card is last copy → manual check', () => {
+        const result = validateOffer(
+            offer(
+                [card(99, 'cardborder_0', 'A'), card(99, 'cardborder_0', 'B')],
+                [card(99, 'cardborder_0', 'C'), card(99, 'cardborder_0', 'D')]
+            ),
+            soft(new Map([['99-A', 1], ['99-B', 2]]))
+        );
+        expect(result.accepted).toBe(false);
+        expect(result.autoDecline).toBe(false);
+    });
+
+    test('2:2, both copies of a card the bot has 2 times → manual check (1 copy may go)', () => {
+        const result = validateOffer(
+            offer(
+                [card(99, 'cardborder_0', 'B'), card(99, 'cardborder_0', 'B')],
+                [card(99, 'cardborder_0', 'C'), card(99, 'cardborder_0', 'D')]
+            ),
+            soft(new Map([['99-B', 2]]))
+        );
+        expect(result.accepted).toBe(false);
+        expect(result.autoDecline).toBe(false);
+    });
+
+    test('2:3, both given cards are last copies → manual check (not N:N)', () => {
+        const result = validateOffer(
+            offer(
+                [card(99, 'cardborder_0', 'A'), card(99, 'cardborder_0', 'B')],
+                [card(99, 'cardborder_0', 'C'), card(99, 'cardborder_0', 'D'), card(99, 'cardborder_0', 'E')]
+            ),
+            soft(new Map([['99-A', 1], ['99-B', 1]]))
+        );
+        expect(result.accepted).toBe(false);
+        expect(result.autoDecline).toBe(false);
+    });
+
+    test('last copy in offer with more cards → manual check', () => {
+        const result = validateOffer(
+            offer(
+                [card(99, 'cardborder_0', 'A'), card(1)],
+                [card(99, 'cardborder_0', 'B'), card(2), card(2)]
+            ),
+            soft(new Map([['99-A', 1]]))
+        );
+        expect(result.accepted).toBe(false);
+        expect(result.autoDecline).toBe(false);
+    });
+
+    test('inventory not loaded → manual check', () => {
+        const result = validateOffer(
+            offer([card(99, 'cardborder_0', 'A')], [card(99, 'cardborder_0', 'B')]),
+            soft(null)
+        );
+        expect(result.accepted).toBe(false);
+        expect(result.autoDecline).toBe(false);
+    });
+
+    test('cross-set ratio wrong → manual check', () => {
+        const result = validateOffer(offer([card(1)], [card(2)]), DEFAULT_CONFIG);
+        expect(result.accepted).toBe(false);
+        expect(result.autoDecline).toBe(false);
+    });
+
+    test('accepted offer → no auto decline', () => {
+        const result = validateOffer(offer([card(1)], [card(2), card(2)]), DEFAULT_CONFIG);
+        expect(result.autoDecline).toBe(false);
     });
 });
 
@@ -323,8 +457,6 @@ describe('Sale cards: give (give 1 special, receive 3 normal)', () => {
     });
 
     test('give 1 sale card, receive only 2 normal → declined', () => {
-        // saleMarketFeeAppIdGet must be set, else the sale card block does not run
-        // (original behavior: both sale checks are in the same if block)
         const config = {
             ...DEFAULT_CONFIG,
             saleMarketFeeAppIdGet: 'nonexistent',
@@ -335,7 +467,17 @@ describe('Sale cards: give (give 1 special, receive 3 normal)', () => {
             config
         );
         expect(result.accepted).toBe(false);
-        expect(result.errorLines).toContain('🔴 Found error within sale card trading');
+        expect(codes(result)).toContain('sale_give');
+    });
+
+    test('give rule works without get rule: 1 sale card for 2 → declined', () => {
+        const config = { ...DEFAULT_CONFIG, saleMarketFeeAppIdGive: ['999'] };
+        const result = validateOffer(
+            offer([card('999')], [card(2), card(2)]),
+            config
+        );
+        expect(result.accepted).toBe(false);
+        expect(codes(result)).toContain('sale_give');
     });
 
     test('give 2 sale cards, receive 6 normal → accepted', () => {
@@ -352,7 +494,7 @@ describe('Regressions', () => {
     test('non-trading card → errorLines is set', () => {
         const result = validateOffer(offer([], [nonCard(1)]), DEFAULT_CONFIG);
         expect(result.accepted).toBe(false);
-        expect(result.errorLines).toContain('🔴 Found something other than a trading card in trade.');
+        expect(codes(result)).toContain('non_card_get');
     });
 
     test('give 2 sale cards, receive 6 normal, sale get set → accepted', () => {
@@ -412,5 +554,49 @@ describe('mapSteamOffer', () => {
         expect(mapped.itemsToReceive).toHaveLength(1);
         expect(mapped.itemsToGive).toHaveLength(1);
         expect(mapped.itemsToReceive[0]).toBeInstanceOf(TradeItem);
+    });
+});
+
+// ─── All reasons are collected ───────────────────────────────────────────────
+
+describe('All decline reasons', () => {
+    test('checks go on after a non-card item and list all reasons', () => {
+        const config = { ...DEFAULT_CONFIG, hardBlacklist: { get: [], give: ['99'] } };
+        const result = validateOffer(
+            offer([nonCard(5), card(99, 'cardborder_0', 'Locked'), card(1, 'cardborder_0', 'X')], [card(2)]),
+            config
+        );
+        expect(result.accepted).toBe(false);
+        expect(codes(result)).toEqual(['non_card_give', 'never_give', 'ratio']);
+    });
+
+    test('reasons name the cards', () => {
+        const result = validateOffer(
+            offer([card(1, 'cardborder_1', 'Shiny')], [card(2, 'cardborder_1', 'Other')]),
+            DEFAULT_CONFIG
+        );
+        const line = result.errorLines.find(l => l.includes('foil'));
+        expect(line).toContain('Shiny (Game1, Foil)');
+        expect(line).toContain('Other (Game2, Foil)');
+    });
+
+    test('normal and foil ratio errors are both listed', () => {
+        const result = validateOffer(
+            offer([card(1, 'cardborder_0'), card(1, 'cardborder_1')], [card(2, 'cardborder_0'), card(2, 'cardborder_1')]),
+            DEFAULT_CONFIG
+        );
+        expect(codes(result)).toEqual(['ratio', 'ratio']);
+    });
+
+    test('failed sale card is not counted again in the ratio check', () => {
+        const config = { ...DEFAULT_CONFIG, saleMarketFeeAppIdGive: ['999'] };
+        const result = validateOffer(offer([card('999')], [card(2), card(2)]), config);
+        expect(codes(result)).toEqual(['sale_give']);
+    });
+
+    test('accepted offer has no reasons', () => {
+        const result = validateOffer(offer([card(1)], [card(2), card(2)]), DEFAULT_CONFIG);
+        expect(result.reasons).toEqual([]);
+        expect(result.errorLines).toEqual([]);
     });
 });
