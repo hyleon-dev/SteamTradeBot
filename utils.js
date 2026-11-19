@@ -100,7 +100,31 @@ function filterSoftBlacklist(itemsMap, blacklist) {
     return { items, blacklistedGames, includesBlacklisted };
 }
 
-function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppIdGet, saleMarketFeeAppIdGive }) {
+// Counts items per market_hash_name. Normal and foil have different names.
+function countByName(items) {
+    const counts = new Map();
+    items.forEach(item => counts.set(item.market_hash_name, (counts.get(item.market_hash_name) || 0) + 1));
+    return counts;
+}
+
+// Soft-give games: the bot gives only duplicates. After the trade it must keep at least 1 copy of each card.
+// ownedCounts: Map market_hash_name -> count in bot inventory. null = inventory not loaded.
+// Returns the names of cards the bot would lose. null = check not possible.
+function findLastCopies(offer, softGiveIds, ownedCounts) {
+    const give = offer.itemsToGive.filter(item => softGiveIds.includes(item.appId));
+    if (give.length === 0) return [];
+    if (!ownedCounts) return null;
+    const giveCounts = countByName(give);
+    const receiveCounts = countByName(offer.itemsToReceive);
+    const lost = [];
+    giveCounts.forEach((given, name) => {
+        const left = (ownedCounts.get(name) || 0) - given + (receiveCounts.get(name) || 0);
+        if (left < 1) lost.push(name);
+    });
+    return lost;
+}
+
+function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppIdGet, saleMarketFeeAppIdGive, ownedCounts = null }) {
     let itemsToReceive = Array.from(offer.itemsToReceive);
     let itemsToGive = Array.from(offer.itemsToGive);
     let saleCardsToGiveValid = true;
@@ -117,6 +141,15 @@ function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppId
         // errorLines must be set. index.js spreads it into the Discord message.
         const error = '🔴 Found something other than a trading card in trade.';
         return { accepted: false, discordLines: [error], errorLines: [error] };
+    }
+
+    // Soft-give games: only duplicates may leave the inventory
+    const lastCopies = findLastCopies(offer, softBlacklist.give, ownedCounts);
+    const softGiveDuplicatesValid = lastCopies !== null && lastCopies.length === 0;
+    if (lastCopies === null) {
+        discordLines.push('🚩 Bot inventory not loaded. Cannot check duplicates of soft blacklisted games. \n');
+    } else if (lastCopies.length > 0) {
+        discordLines.push(`🚩 Bot would give last copy of: ${lastCopies.join(', ')} \n`);
     }
 
     // Build item maps and filter hard blacklist
@@ -238,7 +271,8 @@ function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppId
         && (crossSetItemCountValid || itemsToGive.length === 0)
         && saleCardsToGiveValid
         && !includesHardBlacklisted
-        && !includesSoftBlacklisted;
+        && !includesSoftBlacklisted
+        && softGiveDuplicatesValid;
 
     if (!accepted) {
         if (!itemsToGiveAreTradingCards && itemsToGive.length > 0) errorLines.push('🔴 Found something other than a trading card in trade.');
@@ -246,6 +280,8 @@ function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppId
         if (!saleCardsToGiveValid) errorLines.push('🔴 Found error within sale card trading');
         if (includesHardBlacklisted) errorLines.push('🔴 Trade contains hard blacklisted game');
         if (includesSoftBlacklisted) errorLines.push('🔴 Cross trading contains soft blacklisted game');
+        if (lastCopies === null) errorLines.push('🔴 Could not check duplicates of soft blacklisted game');
+        else if (lastCopies.length > 0) errorLines.push('🔴 Trade gives last copy of a soft blacklisted card');
     }
 
     return { accepted, discordLines, errorLines };

@@ -32,12 +32,13 @@ It reports every offer to Discord, forwards chat messages to your main account a
 The bot checks each offer in this order. The offer is accepted only if all checks pass.
 
 1. **Trading cards only.** Any other item (gems, backgrounds, CS items, …) declines the offer.
-2. **Hard blacklist.** A card from a hard-blacklisted game in the offer declines it (`DO_NOT_GIVE_HARD` / `DO_NOT_GET_HARD`).
+2. **Hard blacklist.** A card from a hard-blacklisted game in the offer declines it (`NEVER_GIVE_APP_IDS` / `NEVER_GET_APP_IDS`).
 3. **1:1 swaps of the same game.** Cards of the same game and same type (normal or foil) are swapped 1:1. These swaps are always fine, also for soft-blacklisted games.
-4. **Soft blacklist.** After step 3, a remaining card from a soft-blacklisted game declines the offer (`DO_NOT_GIVE_SOFT` / `DO_NOT_GET_SOFT`).
-5. **Sale cards** (only active if `SALE_MARKET_FEE_APP_ID_GET` is set):
-   - **Get:** for each sale card the bot receives (app `SALE_MARKET_FEE_APP_ID_GET`), it gives 2 normal cards.
-   - **Give:** for each sale card the bot gives (apps in `SALE_MARKET_FEE_APP_ID_GIVE`), it must receive at least 3 cards. Otherwise the offer is declined.
+4. **Soft blacklist.** After step 3, a remaining card from a soft-blacklisted game declines the offer (`GIVE_ONLY_SAME_SET_DUPLICATES_APP_IDS` / `GET_ONLY_SAME_SET_APP_IDS`).
+   For `GIVE_ONLY_SAME_SET_DUPLICATES_APP_IDS` games the bot also gives only duplicates. After the trade it must keep at least 1 copy of each given card (normal and foil count separately). The bot loads its inventory for this check. If the inventory does not load, the offer is declined. It does not matter if the bot already owns the card it receives.
+5. **Sale cards** (only active if `SALE_CARD_GET_1_FOR_2_APP_ID` is set):
+   - **Get:** for each sale card the bot receives (app `SALE_CARD_GET_1_FOR_2_APP_ID`), it gives 2 normal cards.
+   - **Give:** for each sale card the bot gives (apps in `SALE_CARDS_GIVE_1_FOR_3_APP_IDS`), it must receive at least 3 cards. Otherwise the offer is declined.
 6. **Cross-set ratio.** For all remaining cards: for each card the bot gives, it must receive at least 2 cards of the same type. Normal cards and foils are counted separately.
 
 Example: the bot gives 1 normal card of game A and receives 2 normal cards of game B → accepted.
@@ -91,15 +92,17 @@ All settings are in `.env`. You can also change them in the **Config** tab of th
 | `UPTIMEKUMA_URL` | Base URL of Uptime Kuma, e.g. `https://kuma.example.com` | yes |
 | `UPTIMEKUMA_KEY` | Push key of the Uptime Kuma monitor | yes |
 | `PROMETHEUS_PREFIX` | Prefix for metric names. Default: `steamtradebot` | yes |
-| `SALE_MARKET_FEE_APP_ID_GIVE` | App IDs of sale cards the bot may give (3:1) | no |
-| `SALE_MARKET_FEE_APP_ID_GET` | App ID of the sale card the bot collects (1:2) | no |
-| `DO_NOT_GIVE_HARD` | App IDs the bot never gives | no |
-| `DO_NOT_GET_HARD` | App IDs the bot never receives | no |
-| `DO_NOT_GIVE_SOFT` | App IDs the bot gives only in 1:1 swaps of the same game | no |
-| `DO_NOT_GET_SOFT` | App IDs the bot receives only in 1:1 swaps of the same game | no |
+| `SALE_CARDS_GIVE_1_FOR_3_APP_IDS` | App IDs of sale cards the bot may give (3:1) | no |
+| `SALE_CARD_GET_1_FOR_2_APP_ID` | App ID of the sale card the bot collects (1:2) | no |
+| `NEVER_GIVE_APP_IDS` | App IDs the bot never gives | no |
+| `NEVER_GET_APP_IDS` | App IDs the bot never receives | no |
+| `GIVE_ONLY_SAME_SET_DUPLICATES_APP_IDS` | App IDs the bot gives only in 1:1 swaps of the same game, and only duplicate cards | no |
+| `GET_ONLY_SAME_SET_APP_IDS` | App IDs the bot receives only in 1:1 swaps of the same game | no |
 | `IGNORE_MESSAGES_FROM` | SteamID64s whose chat messages are not forwarded | no |
 
 Lists are comma-separated, e.g. `730,570,440`.
+
+Old variable names (`SALE_MARKET_FEE_APP_ID_GIVE`, `SALE_MARKET_FEE_APP_ID_GET`, `DO_NOT_GIVE_HARD`, `DO_NOT_GET_HARD`, `DO_NOT_GIVE_SOFT`, `DO_NOT_GET_SOFT`) still work. The bot shows a warning at start. Rename them to the new names.
 The Discord webhook URL has the form `https://discord.com/api/webhooks/<ID>/<TOKEN>`.
 
 Optional environment variables (not in the web UI):

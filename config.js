@@ -22,12 +22,13 @@ const FIELDS = [
     { key: 'uptimekuma_url', env: 'UPTIMEKUMA_URL', type: 'string', secret: false, hotReload: false },
     { key: 'uptimekuma_key', env: 'UPTIMEKUMA_KEY', type: 'string', secret: true, hotReload: false },
     { key: 'prometheus_prefix', env: 'PROMETHEUS_PREFIX', type: 'string', secret: false, hotReload: false },
-    { key: 'sale_market_fee_app_id_give', env: 'SALE_MARKET_FEE_APP_ID_GIVE', type: 'ids', secret: false, hotReload: true },
-    { key: 'sale_market_fee_app_id_get', env: 'SALE_MARKET_FEE_APP_ID_GET', type: 'idOrNull', secret: false, hotReload: true },
-    { key: 'do_not_give_hard', env: 'DO_NOT_GIVE_HARD', type: 'ids', secret: false, hotReload: true },
-    { key: 'do_not_get_hard', env: 'DO_NOT_GET_HARD', type: 'ids', secret: false, hotReload: true },
-    { key: 'do_not_give_soft', env: 'DO_NOT_GIVE_SOFT', type: 'ids', secret: false, hotReload: true },
-    { key: 'do_not_get_soft', env: 'DO_NOT_GET_SOFT', type: 'ids', secret: false, hotReload: true },
+    // legacyEnv: old variable name. Read only if the new name is not set.
+    { key: 'sale_cards_give_1_for_3_app_ids', env: 'SALE_CARDS_GIVE_1_FOR_3_APP_IDS', legacyEnv: 'SALE_MARKET_FEE_APP_ID_GIVE', type: 'ids', secret: false, hotReload: true },
+    { key: 'sale_card_get_1_for_2_app_id', env: 'SALE_CARD_GET_1_FOR_2_APP_ID', legacyEnv: 'SALE_MARKET_FEE_APP_ID_GET', type: 'idOrNull', secret: false, hotReload: true },
+    { key: 'never_give_app_ids', env: 'NEVER_GIVE_APP_IDS', legacyEnv: 'DO_NOT_GIVE_HARD', type: 'ids', secret: false, hotReload: true },
+    { key: 'never_get_app_ids', env: 'NEVER_GET_APP_IDS', legacyEnv: 'DO_NOT_GET_HARD', type: 'ids', secret: false, hotReload: true },
+    { key: 'give_only_same_set_duplicates_app_ids', env: 'GIVE_ONLY_SAME_SET_DUPLICATES_APP_IDS', legacyEnv: 'DO_NOT_GIVE_SOFT', type: 'ids', secret: false, hotReload: true },
+    { key: 'get_only_same_set_app_ids', env: 'GET_ONLY_SAME_SET_APP_IDS', legacyEnv: 'DO_NOT_GET_SOFT', type: 'ids', secret: false, hotReload: true },
     { key: 'ignore_messages_from', env: 'IGNORE_MESSAGES_FROM', type: 'ids', secret: false, hotReload: true },
     // Web UI
     { key: 'web_ui_enabled', env: 'WEB_UI_ENABLED', type: 'bool', secret: false, hotReload: false, default: true },
@@ -59,10 +60,23 @@ function serialize(field, value) {
     return String(value);
 }
 
+const warnedLegacy = new Set();
+
+// Returns the raw env value. Falls back to the old name and warns one time.
+function readEnv(field) {
+    if (process.env[field.env] !== undefined || !field.legacyEnv) return process.env[field.env];
+    const legacy = process.env[field.legacyEnv];
+    if (legacy !== undefined && !warnedLegacy.has(field.legacyEnv)) {
+        warnedLegacy.add(field.legacyEnv);
+        console.warn(`Config: ${field.legacyEnv} is deprecated. Rename it to ${field.env} in .env.`);
+    }
+    return legacy;
+}
+
 // Write values from process.env into the exported object.
 function refresh() {
     for (const field of FIELDS) {
-        config[field.key] = parseValue(field, process.env[field.env]);
+        config[field.key] = parseValue(field, readEnv(field));
     }
 }
 

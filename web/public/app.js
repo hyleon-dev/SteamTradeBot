@@ -278,12 +278,12 @@ const LABELS = {
   uptimekuma_url: 'Uptime Kuma URL',
   uptimekuma_key: 'Uptime Kuma Key',
   prometheus_prefix: 'Prometheus prefix',
-  sale_market_fee_app_id_give: 'Sale app IDs (give)',
-  sale_market_fee_app_id_get: 'Sale app ID (get)',
-  do_not_give_hard: 'Hard blacklist (give)',
-  do_not_get_hard: 'Hard blacklist (get)',
-  do_not_give_soft: 'Soft blacklist (give)',
-  do_not_get_soft: 'Soft blacklist (get)',
+  sale_cards_give_1_for_3_app_ids: 'Sale cards to give (1 for 3)',
+  sale_card_get_1_for_2_app_id: 'Sale card to get (1 for 2)',
+  never_give_app_ids: 'Never give',
+  never_get_app_ids: 'Never get',
+  give_only_same_set_duplicates_app_ids: 'Give only same-set duplicates (1:1)',
+  get_only_same_set_app_ids: 'Get only in same-set swaps (1:1)',
   ignore_messages_from: 'Ignore messages from',
   web_ui_enabled: 'Web UI enabled',
   web_host: 'Web Host',
@@ -296,9 +296,9 @@ const CONFIG_GROUPS = [
     title: 'Trade rules',
     // Full width. give/get as pairs in 2 columns.
     full: true,
-    keys: ['sale_market_fee_app_id_give', 'sale_market_fee_app_id_get',
-      'do_not_give_hard', 'do_not_get_hard', 'do_not_give_soft',
-      'do_not_get_soft', 'ignore_messages_from']
+    keys: ['sale_cards_give_1_for_3_app_ids', 'sale_card_get_1_for_2_app_id',
+      'never_give_app_ids', 'never_get_app_ids', 'give_only_same_set_duplicates_app_ids',
+      'get_only_same_set_app_ids', 'ignore_messages_from']
   },
   {
     title: 'Steam',

@@ -13,6 +13,7 @@ function card(appId, border = 'cardborder_0', name = 'Test Card') {
     return new TradeItem({
         appId: String(appId),
         name: name,
+        market_hash_name: `${appId}-${name}${border === 'cardborder_1' ? ' (Foil)' : ''}`,
         type: `Game${appId} Trading Card`,
         border,
         isTradingCard: true
@@ -168,7 +169,7 @@ describe('Soft-Blacklist', () => {
     });
 
     test('soft blacklisted game in 1:1 trade → accepted (1:1 is filtered out first)', () => {
-        const config = { ...DEFAULT_CONFIG, softBlacklist: { get: ['99'], give: ['99'] } };
+        const config = { ...DEFAULT_CONFIG, softBlacklist: { get: ['99'], give: ['99'] }, ownedCounts: new Map([['99-Test Card', 3]]) };
         const result = validateOffer(
             offer([card(99), card(99)], [card(99), card(99)]),
             config
@@ -183,6 +184,76 @@ describe('Soft-Blacklist', () => {
             config
         );
         expect(result.accepted).toBe(false);
+    });
+});
+
+// ─── Soft-Give: duplicates only ──────────────────────────────────────────────
+
+describe('Soft-Give: duplicates only', () => {
+    const soft = (owned) => ({ ...DEFAULT_CONFIG, softBlacklist: { get: [], give: ['99'] }, ownedCounts: owned });
+
+    test('give duplicate 1:1 → accepted', () => {
+        const result = validateOffer(
+            offer([card(99, 'cardborder_0', 'A')], [card(99, 'cardborder_0', 'B')]),
+            soft(new Map([['99-A', 2]]))
+        );
+        expect(result.accepted).toBe(true);
+    });
+
+    test('give last copy 1:1 → declined', () => {
+        const result = validateOffer(
+            offer([card(99, 'cardborder_0', 'A')], [card(99, 'cardborder_0', 'B')]),
+            soft(new Map([['99-A', 1]]))
+        );
+        expect(result.accepted).toBe(false);
+        expect(result.errorLines).toContain('🔴 Trade gives last copy of a soft blacklisted card');
+    });
+
+    test('give 2 of 2 copies → declined', () => {
+        const result = validateOffer(
+            offer([card(99, 'cardborder_0', 'A'), card(99, 'cardborder_0', 'A')], [card(99, 'cardborder_0', 'B'), card(99, 'cardborder_0', 'C')]),
+            soft(new Map([['99-A', 2]]))
+        );
+        expect(result.accepted).toBe(false);
+    });
+
+    test('received card already owned → accepted', () => {
+        const result = validateOffer(
+            offer([card(99, 'cardborder_0', 'A')], [card(99, 'cardborder_0', 'B')]),
+            soft(new Map([['99-A', 2], ['99-B', 5]]))
+        );
+        expect(result.accepted).toBe(true);
+    });
+
+    test('foil copy does not count as duplicate of normal card', () => {
+        const result = validateOffer(
+            offer([card(99, 'cardborder_0', 'A')], [card(99, 'cardborder_0', 'B')]),
+            soft(new Map([['99-A', 1], ['99-A (Foil)', 1]]))
+        );
+        expect(result.accepted).toBe(false);
+    });
+
+    test('duplicate in cross-set trade → declined (only 1:1)', () => {
+        const result = validateOffer(
+            offer([card(99, 'cardborder_0', 'A')], [card(2), card(2)]),
+            soft(new Map([['99-A', 3]]))
+        );
+        expect(result.accepted).toBe(false);
+        expect(result.errorLines).toContain('🔴 Cross trading contains soft blacklisted game');
+    });
+
+    test('inventory not loaded → declined', () => {
+        const result = validateOffer(
+            offer([card(99, 'cardborder_0', 'A')], [card(99, 'cardborder_0', 'B')]),
+            soft(null)
+        );
+        expect(result.accepted).toBe(false);
+        expect(result.errorLines).toContain('🔴 Could not check duplicates of soft blacklisted game');
+    });
+
+    test('no soft-give card in offer → inventory not needed', () => {
+        const result = validateOffer(offer([card(1)], [card(2), card(2)]), soft(null));
+        expect(result.accepted).toBe(true);
     });
 });
 

@@ -50,11 +50,29 @@ startServer();
 // Read trade rules from config for each offer (supports hot reload)
 function getTradeRules() {
     return {
-        saleMarketFeeAppIdGive: config.sale_market_fee_app_id_give.map(String),
-        saleMarketFeeAppIdGet: config.sale_market_fee_app_id_get,
-        hardBlacklist: { get: config.do_not_get_hard.map(String), give: config.do_not_give_hard.map(String) },
-        softBlacklist: { get: config.do_not_get_soft.map(String), give: config.do_not_give_soft.map(String) },
+        saleMarketFeeAppIdGive: config.sale_cards_give_1_for_3_app_ids.map(String),
+        saleMarketFeeAppIdGet: config.sale_card_get_1_for_2_app_id,
+        hardBlacklist: { get: config.never_get_app_ids.map(String), give: config.never_give_app_ids.map(String) },
+        softBlacklist: { get: config.get_only_same_set_app_ids.map(String), give: config.give_only_same_set_duplicates_app_ids.map(String) },
     };
+}
+
+// Counts cards in the bot inventory per market_hash_name (Steam app 753, context 6).
+// Non-tradable cards count too, because they stay in the inventory.
+// Returns null on error. Then soft-give cards are not given.
+function loadOwnedCardCounts() {
+    return new Promise(resolve => {
+        manager.getInventoryContents(753, 6, false, (err, inventory) => {
+            if (err) {
+                logger.warn(`Could not load bot inventory: ${err.message}`);
+                resolve(null);
+                return;
+            }
+            const counts = new Map();
+            inventory.forEach(item => counts.set(item.market_hash_name, (counts.get(item.market_hash_name) || 0) + 1));
+            resolve(counts);
+        });
+    });
 }
 
 // User cache to avoid redundant Steam API calls per trade/message
@@ -232,7 +250,13 @@ async function handleNewOffer(steamOffer) {
     logger.debug(`ItemsToReceive: (${offer.itemsToReceive.length}) ${itemsToText(offer.itemsToReceive)}`);
     logger.debug(`ItemsToGive: (${offer.itemsToGive.length}) ${itemsToText(offer.itemsToGive)}`);
 
-    const result = validateOffer(offer, getTradeRules());
+    const rules = getTradeRules();
+    // Load inventory only if the bot gives cards of a soft blacklisted game
+    if (offer.itemsToGive.some(item => rules.softBlacklist.give.includes(item.appId))) {
+        rules.ownedCounts = await loadOwnedCardCounts();
+    }
+
+    const result = validateOffer(offer, rules);
     lines.push(...result.discordLines);
 
     logger.debug(`Trade will be accepted: ${result.accepted}`);
