@@ -1,183 +1,768 @@
-:root {
-  --bg: #0f1420;
-  --panel: #1a2130;
-  --panel-2: #222b3d;
-  --text: #e6ebf5;
-  --muted: #8a97ad;
-  --accent: #4f8cff;
-  --green: #37c871;
-  --red: #e05a5a;
-  --border: #2c3650;
+/* SteamTradeBot console. Tokens are in tokens.css.
+   Design idea: a binder for trading cards. Cards look like cards (portrait frame,
+   name strip). Cards in (gets, teal) and cards out (gives, amber) keep one color
+   everywhere. All other chrome stays quiet: rules instead of boxes, few radii. */
 
-  --max-item-icons-per-line: 8;
-}
+/* ---------- Page frame ---------- */
 
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  background: var(--bg);
-  color: var(--text);
-}
-
-header {
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 12px 24px;
-  padding: 12px 24px;
-  border-bottom: 1px solid var(--border);
-  background: var(--panel);
+  gap: var(--space-3) var(--space-5);
+  padding: var(--space-3) var(--space-5) 0;
+  background: color-mix(in srgb, var(--page) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border-block-end: 1px solid var(--rule);
 }
 
-header h1 {
-  margin: 0;
-  font-size: 20px;
-}
-
-nav#tabs {
+.brand {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding-block-end: var(--space-3);
+  flex: none;
+}
+
+/* Wordmark set like the name strip of a card */
+.wordmark {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--step-2);
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+/* Bot state: a dot shape plus a word, never color alone */
+.bot-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--step--1);
+  color: var(--graphite);
+  white-space: nowrap;
+
+  &::before {
+    content: "";
+    inline-size: 8px;
+    block-size: 8px;
+    border-radius: 50%;
+    border: 2px solid var(--graphite);
+  }
+
+  &[data-state="online"]::before {
+    background: var(--ok);
+    border-color: var(--ok);
+  }
+
+  &[data-state="offline"]::before {
+    border-color: var(--bad);
+  }
+}
+
+/* Tabs: text with an underline, in one row. They scroll when they do not fit. */
+.tablist {
+  display: flex;
+  gap: var(--space-1);
+  min-inline-size: 0;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+  align-self: stretch;
+  align-items: stretch;
 }
 
 .tab {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--muted);
-  padding: 8px 16px;
-  border-radius: 8px;
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  color: var(--graphite);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-control) var(--radius-control) 0 0;
+  font-weight: 500;
   cursor: pointer;
-  font-size: 14px;
+
+  &:hover {
+    color: var(--paper);
+  }
+
+  /* Visible focus inside the scroll box */
+  &:focus-visible {
+    outline-offset: -2px;
+  }
 }
 
-.tab.active {
-  color: var(--text);
-  background: var(--panel-2);
-  border-color: var(--accent);
+/* Selected: text color plus an underline (a border, so forced colors mode keeps it).
+   No size change. */
+.tab[aria-selected="true"] {
+  color: var(--paper);
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: auto var(--space-3) -1px;
+    border-block-end: 3px solid var(--accent);
+    border-radius: 2px;
+  }
+}
+
+.tab-count {
+  min-inline-size: 1.4em;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: var(--step--1);
+  font-weight: 600;
+  line-height: 1.5;
+  text-align: center;
+
+  &[hidden] {
+    display: none;
+  }
+}
+
+.sign-out {
+  flex: none;
+  margin: 0;
+  padding-block-end: var(--space-3);
 }
 
 main {
-  padding: 24px;
-  max-width: 1600px;
+  max-inline-size: 1440px;
   margin: 0 auto;
+  padding: var(--space-5);
 }
 
-.panel {
-  display: none;
+/* Panels use the hidden attribute. No display rule here, it would override hidden. */
+
+@media (max-width: 760px) {
+  .topbar {
+    flex-wrap: wrap;
+    padding-inline: var(--space-4);
+  }
+
+  .brand {
+    flex: 1;
+  }
+
+  .tablist {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  main {
+    padding: var(--space-4);
+  }
 }
 
-.panel.active {
-  display: block;
+/* ---------- Basic elements ---------- */
+
+h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--step-2);
+  line-height: 1.1;
 }
 
-.tiles {
+h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--step-1);
+  line-height: 1.2;
+}
+
+.hint {
+  margin: 0 0 var(--space-4);
+  max-inline-size: 72ch;
+  color: var(--graphite);
+  font-size: var(--step--1);
+}
+
+.empty {
+  margin: 0;
+  padding: var(--space-5) 0;
+  color: var(--graphite);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-5);
+
+  label {
+    color: var(--graphite);
+  }
+}
+
+/* At least 16px: smaller text makes iOS zoom into the field on focus. */
+select,
+input[type=text],
+input[type=password],
+input[type=search] {
+  min-inline-size: 0;
+  padding: 7px 10px;
+  color: var(--paper);
+  background: var(--sleeve);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-control);
+  font-size: max(1rem, 1em);
+}
+
+input[type=checkbox] {
+  inline-size: 18px;
+  block-size: 18px;
+  accent-color: var(--accent);
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+
+  label {
+    color: var(--paper);
+  }
+}
+
+/* Buttons. Default: quiet outline. Primary: the one main action. Danger: destructive. */
+button {
+  min-block-size: 36px;
+  padding: 6px 14px;
+  color: var(--paper);
+  background: transparent;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-control);
+  font-weight: 500;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--graphite);
+    background: var(--raised);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+/* Not every submit button: Cancel and Close in <form method="dialog"> are submit buttons too. */
+button.primary,
+.save-bar button[type=submit] {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
+
+  &:hover {
+    filter: brightness(1.08);
+  }
+}
+
+button.danger {
+  border-color: var(--bad);
+
+  &:hover {
+    background: color-mix(in srgb, var(--bad) 14%, transparent);
+  }
+}
+
+button.quiet {
+  border-color: transparent;
+
+  &:hover {
+    border-color: var(--rule-strong);
+  }
+}
+
+/* Hides text visually, keeps it for screen readers */
+.visually-hidden:where(:not(:focus-within, :active)) {
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
+
+/* Status pills: a symbol plus a word. The tone shows only as the left edge. */
+.pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border: 1px solid var(--rule-strong);
+  border-inline-start-width: 3px;
+  border-radius: var(--radius-control);
+  font-size: var(--step--1);
+  white-space: nowrap;
+
+  &[data-tone="ok"] {
+    border-inline-start-color: var(--ok);
+  }
+
+  &[data-tone="bad"] {
+    border-inline-start-color: var(--bad);
+  }
+
+  &[data-tone="warn"] {
+    border-inline-start-color: var(--warn);
+  }
+}
+
+.badge {
+  display: inline-block;
+  margin-inline-start: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-family: var(--font-text);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.6;
+  white-space: nowrap;
+  vertical-align: 0.1em;
+  background: var(--raised);
+  color: var(--paper);
+
+  &.foil {
+    background: linear-gradient(100deg, #3a3f6b, #2d5560 50%, #5b4a2c);
+  }
+
+  &.protected {
+    box-shadow: inset 0 0 0 1px var(--gets);
+  }
+
+  &.never {
+    box-shadow: inset 0 0 0 1px var(--bad);
+  }
+
+  &.restart {
+    box-shadow: inset 0 0 0 1px var(--warn);
+  }
+
+  &.hot {
+    box-shadow: inset 0 0 0 1px var(--ok);
+  }
+}
+
+/* Count next to a heading, e.g. "Bot gets 3" */
+.count {
+  color: var(--graphite);
+  font-family: var(--font-text);
+  font-weight: 500;
+  font-size: var(--step-0);
+}
+
+/* ---------- Ledger: one row of numbers, separated by rules, not floating boxes ---------- */
+
+.ledger {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
-  margin-bottom: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin: 0 0 var(--space-6);
+  border-block: 1px solid var(--rule);
 }
 
-.tile {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
+.stat {
+  position: relative;
+  padding: var(--space-4) var(--space-4) var(--space-4) 0;
+
+  & + & {
+    padding-inline-start: var(--space-4);
+    border-inline-start: 1px solid var(--rule);
+  }
+
+  /* Card flow: a short rule in the flow color above the number.
+     Every cell reserves the space, so all numbers stand on one line. */
+  &::before {
+    content: "";
+    display: block;
+    inline-size: 28px;
+    margin-block-end: var(--space-2);
+    border-block-start: 3px solid transparent;
+    border-radius: 2px;
+  }
+
+  &[data-flow="gets"]::before {
+    border-color: var(--gets);
+  }
+
+  &[data-flow="gives"]::before {
+    border-color: var(--gives);
+  }
 }
 
-.tile .value {
-  font-size: 28px;
-  font-weight: 700;
+.stat-value {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--step-3);
+  line-height: 1;
 }
 
-.tile .label {
-  color: var(--muted);
-  font-size: 13px;
-  margin-top: 4px;
+.stat-label {
+  margin-block-start: var(--space-1);
+  color: var(--graphite);
+  font-size: var(--step--1);
 }
+
+@media (max-width: 600px) {
+  .ledger {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .stat {
+    padding-inline: 0 var(--space-3);
+    border-inline-start: 0 !important;
+
+    & + & {
+      padding-inline-start: 0;
+    }
+  }
+}
+
+/* ---------- Dashboard ---------- */
 
 .chart-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: var(--space-5);
 }
 
 .chart-box {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
+  margin: 0;
+  min-inline-size: 0;
 }
 
-@media (max-width: 760px) {
+/* Chart.js needs a positioned wrapper that holds only the canvas and sets the height */
+.chart-canvas {
+  position: relative;
+  block-size: 280px;
+}
+
+.chart-title {
+  margin-block-end: var(--space-2);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--step-1);
+}
+
+@media (max-width: 860px) {
   .chart-row {
     grid-template-columns: 1fr;
   }
 }
 
-.controls {
-  margin: 16px 0;
+.reason-stats {
+  margin-block-start: var(--space-6);
+}
+
+.section-head {
   display: flex;
-  gap: 12px;
-  align-items: center;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-block-end: var(--space-2);
+
+  .controls {
+    margin: 0;
+  }
 }
 
-select, input[type=text], input[type=password] {
-  min-width: 0;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 8px 10px;
-  border-radius: 8px;
-  font-size: 14px;
+/* One series: label, bar and count in one row. The count is text, not color. */
+.bar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+
+  li {
+    display: grid;
+    grid-template-columns: minmax(200px, 2fr) 3fr 48px;
+    align-items: center;
+    gap: var(--space-3);
+  }
 }
 
-button {
+.bar-track {
+  block-size: 12px;
+}
+
+.bar {
+  display: block;
+  block-size: 100%;
+  min-inline-size: 2px;
   background: var(--accent);
-  border: none;
-  color: white;
-  padding: 8px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
+  border-radius: 0 4px 4px 0;
 }
 
-button:hover {
-  opacity: 0.9;
+.bar-value {
+  text-align: end;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--step-1);
+}
+
+@media (max-width: 600px) {
+  .bar-list li {
+    grid-template-columns: 1fr 48px;
+  }
+
+  .bar-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+/* ---------- Card flow sides (offers and detail dialog) ---------- */
+
+/* Each side has a rule in its flow color, so "gets" and "gives" never mix up. */
+[data-flow="gets"] {
+  --flow: var(--gets);
+}
+
+[data-flow="gives"] {
+  --flow: var(--gives);
+}
+
+.offer-side,
+.trade-side {
+  min-inline-size: 0;
+  padding-block-start: var(--space-3);
+  border-block-start: 3px solid var(--flow, var(--rule));
+
+  h3 {
+    margin-block-end: var(--space-3);
+  }
+}
+
+/* ---------- Open offers: trade slips ---------- */
+
+.offer-list {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.offer {
+  padding: var(--space-4) var(--space-5);
+  background: var(--sleeve);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+}
+
+.offer-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  margin-block-end: var(--space-4);
+}
+
+.offer-partner {
+  font-size: var(--step-2);
+}
+
+.offer-time {
+  color: var(--graphite);
+  font-size: var(--step--1);
+  margin-inline-end: auto;
+}
+
+.offer-items {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+}
+
+.thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  img {
+    inline-size: 56px;
+    block-size: 56px;
+    object-fit: cover;
+    border-radius: 4px;
+    background: var(--raised);
+    border: 1px solid var(--rule);
+  }
+
+  .empty {
+    padding: 0;
+  }
+}
+
+/* Item without an image ID. Same size as the image it stands for. */
+.thumb-missing {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 32px;
+  block-size: 32px;
+  margin: 0 4px 4px 0;
+  border-radius: 3px;
+  border: 1px solid var(--rule);
+  background: var(--raised);
+  color: var(--graphite);
+  font-family: var(--font-display);
+  font-weight: 600;
+  vertical-align: top;
+
+  .thumbs & {
+    inline-size: 56px;
+    block-size: 56px;
+    margin: 0;
+    font-size: var(--step-1);
+  }
+}
+
+.reason-list {
+  margin: 0;
+  padding-inline-start: 1.1em;
+
+  li + li {
+    margin-block-start: var(--space-1);
+  }
+
+  li::marker {
+    color: var(--warn);
+  }
+}
+
+.offer-reasons {
+  margin-block-start: var(--space-4);
+  padding: var(--space-3) var(--space-3) var(--space-3) calc(var(--space-3) + 1.1em);
+  background: var(--page);
+  border-radius: var(--radius-control);
+  font-size: var(--step--1);
+}
+
+.offer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-block-start: var(--space-4);
+}
+
+#offersMsg {
+  color: var(--graphite);
+  font-size: var(--step--1);
+}
+
+@media (max-width: 760px) {
+  .offer {
+    padding: var(--space-4);
+  }
+
+  .offer-items {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+}
+
+/* ---------- Trades table ---------- */
+
+.table-wrap {
+  overflow-x: auto;
+
+  &:focus-visible {
+    outline-offset: 2px;
+  }
 }
 
 table {
-  width: 100%;
+  inline-size: 100%;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: var(--step--1);
 }
 
-th, td {
-  text-align: left;
-  padding: 10px;
-  border-bottom: 1px solid var(--border);
-}
-
-tr {
-  vertical-align: baseline;
+th,
+td {
+  padding: var(--space-3) var(--space-3) var(--space-3) 0;
+  text-align: start;
+  vertical-align: top;
+  border-block-end: 1px solid var(--rule);
 }
 
 th {
-  color: var(--muted);
-  font-weight: 600;
+  color: var(--graphite);
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .items-td {
-  max-width: calc(32px * var(--max-item-icons-per-line));
+  min-inline-size: 7rem;
+  max-inline-size: calc(36px * 6);
+
+  img {
+    inline-size: 32px;
+    block-size: 32px;
+    margin: 0 4px 4px 0;
+    object-fit: cover;
+    border-radius: 3px;
+    background: var(--raised);
+    vertical-align: top;
+  }
 }
 
-/* Short highlight for a trade that arrived live. */
+.reason-td {
+  min-inline-size: 18rem;
+  color: var(--graphite);
+}
+
+.trade-row {
+  cursor: pointer;
+
+  &:hover,
+  &:focus-within {
+    background: var(--sleeve);
+  }
+}
+
+/* The time cell is the real button that opens the details */
+.row-open {
+  min-block-size: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--paper);
+  font-weight: 400;
+  text-align: start;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 3px;
+
+  &:hover {
+    background: none;
+    text-decoration-color: var(--accent);
+  }
+}
+
+/* Short highlight for a trade that arrived live */
 @keyframes row-new-fade {
   from {
-    background: rgba(79, 140, 255, 0.35);
+    background: color-mix(in srgb, var(--accent) 30%, transparent);
   }
   to {
     background: transparent;
@@ -195,221 +780,197 @@ th {
   }
 }
 
-.status-accepted {
-  color: var(--green);
-}
+/* ---------- Cards: portrait frame, name strip, type line ---------- */
 
-.status-declined {
-  color: #e05a5a;
-}
-
-/* Config: groups as cards side by side, fields inside as a grid. */
-#configFields {
+.card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
-  gap: 16px;
-  align-items: start;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: var(--space-4) var(--space-3);
 }
 
-.field-group {
-  margin: 0;
-  padding: 12px 16px 16px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  min-width: 0;
-}
-
-.field-group.full {
-  grid-column: 1 / -1;
-}
-
-.field-group legend {
-  padding: 0 6px;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.field-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px 16px;
-}
-
-/* 2 columns if there is space. Else 1 column. */
-.field-grid.cols-2 {
-  grid-template-columns: repeat(auto-fill, minmax(max(260px, calc(50% - 8px)), 1fr));
-}
-
-.field-row {
+.card {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 0;
+  margin: 0;
+  padding: 6px;
+  background: var(--raised);
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
 }
 
-.field-row.wide {
-  grid-column: 1 / -1;
+.card-frame {
+  aspect-ratio: 5 / 6;
+  border-radius: 4px;
+  background: var(--page);
+  overflow: hidden;
+
+  img {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    /* contain: the whole card art stays visible, nothing is cut off */
+    object-fit: contain;
+  }
 }
 
-.field-row label {
-  font-size: 13px;
-  color: var(--muted);
+/* Foil: a quiet holo edge, so foils stand out from normal cards. "Foil" is also written. */
+.card.foil {
+  border-color: transparent;
+  background: linear-gradient(var(--raised), var(--raised)) padding-box,
+  linear-gradient(130deg, #8a7cff, var(--gets) 40%, #e9c46a 70%, #d16ba5) border-box;
 }
 
-.field-row input[type=text], .field-row input[type=password] {
-  width: 100%;
+.card figcaption {
+  padding: var(--space-2) 2px 0;
 }
 
-.checkbox-row {
-  justify-content: flex-end;
+.card-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--step-0);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
 }
 
-.checkbox-row label {
+.card-game {
+  margin-block-start: 2px;
+  color: var(--graphite);
+  font-size: 0.75rem;
+}
+
+.card-links {
   display: flex;
+  gap: var(--space-1);
+  margin-block-start: auto;
+  padding-block-start: var(--space-2);
+}
+
+.link-button {
+  flex: 1;
+  padding: 4px 0;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--paper);
+  text-decoration: none;
+  border: 1px solid var(--rule-strong);
+  border-radius: 4px;
+
+  &:hover {
+    border-color: var(--accent);
+  }
+}
+
+/* Duplicates: the card lies on a small stack. One layer per extra copy (max 2 layers). */
+.card[data-stack="2"],
+.card[data-stack="3"] {
+  margin: 0 6px 6px 0;
+  box-shadow: 4px 4px 0 -1px var(--sleeve), 4px 4px 0 0 var(--rule-strong);
+}
+
+.card[data-stack="3"] {
+  box-shadow: 4px 4px 0 -1px var(--sleeve), 4px 4px 0 0 var(--rule-strong),
+  8px 8px 0 -1px var(--sleeve), 8px 8px 0 0 var(--rule-strong);
+}
+
+.card-count {
+  position: absolute;
+  inset-block-start: -8px;
+  inset-inline-end: -8px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--page);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--step-0);
+  line-height: 1.5;
+}
+
+/* Missing card of a set: an empty binder slot */
+.card.slot {
+  justify-content: center;
   align-items: center;
-  gap: 8px;
-  min-height: 36px;
-  color: var(--text);
-  font-size: 14px;
-  cursor: pointer;
+  min-block-size: 9rem;
+  background: none;
+  border: 1px dashed var(--rule-strong);
+  color: var(--graphite);
+  font-size: var(--step--1);
 }
 
-/* Save bar stays visible at the bottom while scrolling. */
-.save-bar {
-  position: sticky;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 16px;
-  padding: 12px 0;
-  background: var(--bg);
-  border-top: 1px solid var(--border);
-}
+/* ---------- Dialogs ---------- */
 
-.badge {
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 6px;
-  margin-left: 6px;
-}
-
-.badge.restart {
-  background: #55411a;
-  color: #ffcf7a;
-}
-
-.badge.hot {
-  background: #1d4a32;
-  color: #8ee6b0;
-}
-
-.hint {
-  margin-top: 0;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-#configMsg {
-  font-size: 13px;
-}
-
-#statusInfo {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.status-item {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 12px;
-}
-
-.status-item .k {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.status-item .v {
-  font-size: 16px;
-  margin-top: 4px;
-}
-
-/* Trade rows open the detail dialog. */
-.trade-row {
-  cursor: pointer;
-}
-
-.trade-row:hover, .trade-row:focus-visible {
-  background: var(--panel-2);
-  outline: none;
-}
-
-/* Trade detail dialog. No padding on the dialog itself, so a click on the dialog element is a backdrop click. */
-#tradeDialog {
-  width: min(1200px, calc(100vw - 32px));
-  max-height: calc(100vh - 64px);
-  padding: 0;
-  background: var(--panel);
-  color: var(--text);
-  border: 1px solid var(--border);
+dialog {
+  color: var(--paper);
+  background: var(--sleeve);
+  border: 1px solid var(--rule-strong);
   border-radius: 12px;
+  padding: 0;
 }
 
-#tradeDialog::backdrop {
-  background: rgba(0, 0, 0, 0.6);
+/* Modal dialogs: scrolling over the backdrop or inside the dialog must not scroll the page.
+   ::backdrop needs overflow: hidden, else it is no scroll container and ignores overscroll-behavior. */
+dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: rgb(5 9 15 / 0.7);
+}
+
+#tradeDialog {
+  inline-size: min(1100px, calc(100vw - 32px));
+  max-block-size: calc(100dvh - 48px);
 }
 
 .dialog-head {
   position: sticky;
   top: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-}
+  padding: var(--space-3) var(--space-5);
+  background: var(--sleeve);
+  border-block-end: 1px solid var(--rule);
 
-.dialog-head h2 {
-  margin: 0;
-  font-size: 18px;
+  form {
+    margin: 0;
+  }
 }
 
 .dialog-close {
-  background: transparent;
-  color: var(--muted);
-  padding: 4px 10px;
-  font-size: 18px;
+  min-inline-size: 36px;
+  padding: 0;
+  border-color: transparent;
+  font-size: var(--step-1);
 }
 
 #tradeDialogBody {
-  padding: 16px 20px 20px;
+  padding: var(--space-4) var(--space-5) var(--space-5);
 }
 
 .trade-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 20px;
-  color: var(--muted);
-  font-size: 14px;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  color: var(--graphite);
 }
 
 .trade-reason {
-  margin-top: 8px;
-  font-size: 13px;
-  color: var(--muted);
+  margin-block-start: var(--space-3);
+  font-size: var(--step--1);
+  color: var(--graphite);
 }
 
-/* Received and Given side by side. 1 column on small screens. */
 .trade-sides {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px;
+  gap: var(--space-5);
+  margin-block-start: var(--space-5);
 }
 
 @media (max-width: 760px) {
@@ -418,84 +979,263 @@ th {
   }
 }
 
-.trade-side {
-  min-width: 0;
+#confirmDialog {
+  inline-size: min(440px, calc(100vw - 32px));
+  padding: var(--space-5);
+
+  h2 {
+    margin-block-end: var(--space-2);
+  }
+
+  p {
+    margin: 0;
+  }
 }
 
-.trade-side h3 {
-  margin: 20px 0 10px;
-  font-size: 15px;
-}
-
-.card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px;
-}
-
-.card {
+.dialog-actions {
   display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 8px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-block-start: var(--space-5);
 }
 
-.card.foil {
-  border-color: #c9a8ff;
+/* ---------- Inventory: binder ---------- */
+
+.size-loader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-block-end: var(--space-5);
+
+  progress {
+    inline-size: 200px;
+    accent-color: var(--accent);
+  }
+
+  .hint {
+    margin: 0;
+  }
 }
 
-.card img {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: 6px;
+#invMsg {
+  margin-block: calc(-1 * var(--space-3)) var(--space-3);
 }
 
-.card figcaption {
-  margin-top: 6px;
+.set-list {
+  display: grid;
+  border-block-start: 1px solid var(--rule);
 }
 
-.card-name {
-  font-size: 14px;
+.set {
+  border-block-end: 1px solid var(--rule);
+
+  &[open] {
+    background: color-mix(in srgb, var(--sleeve) 60%, transparent);
+  }
+
+  .card-grid {
+    padding: var(--space-2) var(--space-4) var(--space-5) calc(var(--space-4) + 1.25rem);
+  }
+}
+
+/* display: grid removes the default ::marker triangle. So draw an own chevron
+   with ::before, right before the set name. It is the first grid column. */
+.set summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 2fr) minmax(0, 1.5fr) 7rem;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  list-style: none;
+
+  &::-webkit-details-marker {
+    display: none;
+  }
+
+  &:hover {
+    background: var(--sleeve);
+  }
+
+  &:focus-visible {
+    outline-offset: -2px;
+  }
+
+  /* Chevron from two borders in the text color. Closed: points to the inline end. */
+  &::before {
+    content: "";
+    inline-size: 0.5em;
+    block-size: 0.5em;
+    border-inline-end: 2px solid currentColor;
+    border-block-end: 2px solid currentColor;
+    rotate: -45deg;
+  }
+
+  &:dir(rtl)::before {
+    rotate: 135deg;
+  }
+
+  /* Rotate instead of swapping icons, so the change can animate */
+  details[open] > &::before {
+    rotate: 45deg;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    &::before {
+      transition: rotate 0.2s;
+    }
+  }
+}
+
+.set-name {
+  font-family: var(--font-display);
   font-weight: 600;
+  font-size: var(--step-1);
+  line-height: 1.2;
   overflow-wrap: anywhere;
 }
 
-.card-game {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 2px;
-}
-
-/* margin-top auto puts the buttons at the bottom of the card. */
-.card-links {
+.set-progress {
   display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--step--1);
+
+  progress {
+    inline-size: 120px;
+    accent-color: var(--accent);
+  }
+
+  .hint {
+    margin: 0;
+  }
+}
+
+.set-dupes {
+  color: var(--graphite);
+  font-size: var(--step--1);
+  text-align: end;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .set summary {
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .set-progress {
+    grid-column: 2 / -1;
+    grid-row: 2;
+  }
+
+  .set .card-grid {
+    padding-inline: var(--space-4);
+  }
+}
+
+/* ---------- Config ---------- */
+
+#configFields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.field-group {
+  margin: 0;
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+
+  &.full {
+    grid-column: 1 / -1;
+  }
+
+  legend {
+    padding: 0 var(--space-2);
+    margin-inline-start: calc(-1 * var(--space-2));
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: var(--step-1);
+  }
+}
+
+.field-grid {
+  display: grid;
+  gap: var(--space-4);
+
+  &.cols-2 {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  }
+}
+
+.field-row {
+  display: flex;
+  flex-direction: column;
   gap: 6px;
-  margin-top: auto;
-  padding-top: 8px;
+
+  &.wide {
+    grid-column: 1 / -1;
+  }
+
+  label {
+    color: var(--graphite);
+    font-size: var(--step--1);
+  }
 }
 
-.link-button {
-  flex: 1;
-  padding: 5px 0;
-  text-align: center;
-  font-size: 12px;
-  color: var(--text);
-  text-decoration: none;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+.checkbox-row label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--paper);
+  font-size: var(--step-0);
 }
 
-.link-button:hover, .link-button:focus-visible {
-  border-color: var(--accent);
+.save-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-block-start: var(--space-5);
+  padding: var(--space-3) 0;
+  background: var(--page);
+  border-block-start: 1px solid var(--rule);
 }
 
-.badge.foil {
-  background: #3b2a5a;
-  color: #d9c4ff;
-  margin-left: 4px;
+#configMsg {
+  color: var(--graphite);
+  font-size: var(--step--1);
+}
+
+/* ---------- Status ---------- */
+
+#statusInfo {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0 var(--space-6);
+  max-inline-size: 720px;
+  margin-block-end: var(--space-5);
+  border-block-start: 1px solid var(--rule);
+}
+
+.status-item {
+  display: contents;
+
+  .k,
+  .v {
+    padding: var(--space-3) 0;
+    border-block-end: 1px solid var(--rule);
+  }
+
+  .k {
+    color: var(--graphite);
+  }
+
+  .v {
+    overflow-wrap: anywhere;
+  }
 }

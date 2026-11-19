@@ -11,7 +11,7 @@ It reports every offer to Discord, forwards chat messages to your main account a
 ### Bot
 - **Automatic offer validation** with configurable rules (see [Trade rules](#trade-rules)).
 - **Automatic accept and mobile confirmation.** The bot confirms trades with the identity secret. Offers where the bot gives nothing need no confirmation.
-- **Declined offers stay open.** The bot does not decline anything. It notifies you on Discord so that you can check the offer manually.
+- **Declined offers stay open.** The bot notifies you on Discord so that you can check the offer manually. Only clear cases are declined automatically, and only if `AUTO_DECLINE_CLEAR_CASES=true`.
 - **Chat forwarding.** Friend messages to the bot are forwarded to your main account. The sender gets a reply that points to the main account.
 - **Discord notifications** for bot start, disconnect, every offer (with the planned card swaps or the reasons for rejection) and failed accepts.
 - **Automatic reconnect** after connection loss. Expired web sessions are refreshed.
@@ -22,8 +22,10 @@ It reports every offer to Discord, forwards chat messages to your main account a
 ### Web UI
 | Tab | Content |
 |---|---|
-| **Dashboard** | Total trades, acceptance rate, cards received and given. Charts over time, grouped by day, week or month. |
-| **Trades** | The last 100 offers with partner, card images, status and decline reason. Filter by accepted or declined. Updates **live** when a new offer arrives. |
+| **Dashboard** | Total trades, acceptance rate, cards received and given. Charts over time, grouped by day, week or month. Declined offers per reason (last 7 days, 30 days or all time), plus counts of automatic and manual actions. |
+| **Open offers** | Active offers on Steam with the reasons of the bot. Accept or decline them with one click (with a confirm dialog). A manual accept does not check the rules again. Protected cards are still reserved. Each manual action goes to Discord. The tab shows the number of open offers. |
+| **Trades** | The last 100 offers with partner, card images, status and decline reason. Shows automatic declines and manual actions. Filter by accepted or declined. Updates **live** when a new offer arrives. |
+| **Inventory** | Cards of the bot by set (normal and foil apart), with duplicates and set progress. Filter by name, protected sets or sets with duplicates. The set size comes from the badge page of the bot. It loads when you open a set, or for all sets with "Load missing set sizes" (one after the other, with a pause for Steam). Loaded sizes stay in the database for good. |
 | **Config** | All settings, grouped by topic. Trade rules apply instantly. Other settings need a restart. Secrets are masked and never sent to the browser. |
 | **Status** | Login state, uptime, reconnect attempts, last heartbeat and last error. Refreshes every 10 seconds. |
 
@@ -94,7 +96,7 @@ All settings are in `.env`. You can also change them in the **Config** tab of th
 | `PORT` | Port of the web UI and `/metrics`. **Required.** | yes |
 | `WEB_UI_ENABLED` | `false` disables the web UI. `/metrics` stays available. Default: `true` | yes |
 | `WEB_HOST` | Bind address. Default: `127.0.0.1` | yes |
-| `WEB_AUTH_TOKEN` | Password for the web UI (basic auth, any user name). See [Security](#security). | yes |
+| `WEB_AUTH_TOKEN` | Password for the web UI login page. See [Security](#security). | yes |
 | `STEAM_USERNAME` | Login name of the bot account | yes |
 | `STEAM_PASSWORD` | Password of the bot account | yes |
 | `STEAM_SHARED_SECRET` | Shared secret, used to create Steam Guard codes | yes |
@@ -127,8 +129,10 @@ Optional environment variables (not in the web UI):
 ## Security
 
 - **Without `WEB_AUTH_TOKEN`**, the web UI accepts only requests to `localhost`, `127.0.0.1` or `[::1]`. Requests via another host name get `403`. This protects against DNS rebinding.
-- **With `WEB_AUTH_TOKEN`**, the web UI uses basic auth. After 10 wrong passwords, the IP is locked for 15 minutes.
-- **Never expose the web UI to the internet without an HTTPS reverse proxy.** Basic auth sends the token in plain text.
+- **With `WEB_AUTH_TOKEN`**, the web UI shows its own login page (password only). After sign in, a session cookie (HttpOnly, SameSite=Strict, 30 days) keeps you signed in, also after a restart. A new token signs out all sessions. After 10 wrong passwords, the IP is locked for 15 minutes.
+- Scripts can still send the token as basic auth (`Authorization: Basic`, any user name). The server never asks for basic auth, so browsers never show their own login dialog.
+- **Write requests** (save config, accept or decline offers) must send `Content-Type: application/json`. Other types get `415`. This protects against CSRF: another website cannot send JSON to the bot without a CORS preflight, and the server allows no CORS.
+- **Never expose the web UI to the internet without an HTTPS reverse proxy.** Without HTTPS, the password and the session cookie travel in plain text.
 - `/metrics` needs no login. It shows only trade counts and process metrics.
 - **Never commit** `.env`, maFiles or the database. `.gitignore` covers these files.
 
@@ -162,17 +166,31 @@ The bot writes daily log files to `logs/`:
 
 ## HTTP API
 
-All endpoints except `/metrics` need the same auth as the web UI.
+All `/api` endpoints need the same auth as the web UI: the session cookie from the login page, or the token as basic auth. Without a session they return `401`. `POST` requests must send `Content-Type: application/json`.
 
 | Endpoint | Description |
 |---|---|
 | `GET /api/status` | Bot state (login, uptime, reconnects, heartbeat, last error) |
+| `GET /api/session` | `{ authEnabled }`: is a password set |
 | `GET /api/trades?accepted=&from=&to=&limit=` | Trade history. `from`/`to` in Unix ms. `limit` max 1000, default 100. |
 | `GET /api/trades/stats?groupBy=day\|week\|month` | Aggregated trade counts |
+| `GET /api/trades/reasons?days=` | Declined offers per reason code, plus counts of automatic and manual actions. Without `days`: all time. |
+| `GET /api/offers/open` | Active offers on Steam with the stored check result |
+| `POST /api/offers/:id/accept` | Accept an active offer manually (rules are not checked again) |
+| `POST /api/offers/:id/decline` | Decline an active offer manually |
+| `GET /api/inventory?refresh=1` | Bot cards grouped by set. Cached for 60 seconds, `refresh=1` loads them again. |
+| `GET /api/inventory/set-size/:appId` | Number of cards in a set (from the badge page, cached in the database) |
 | `GET /api/messages?limit=` | Stored chat messages |
 | `GET /api/config` | Current config. Secrets show only if they are set. |
 | `POST /api/config` | Update config (JSON body with field keys). Empty secret fields keep the current value. |
-| `GET /api/events` | Server-Sent Events stream. Sends a `trade` event for each new offer. |
+| `GET /api/events` | Server-Sent Events stream. Sends `trade` for each new offer and `offer` when an offer changes on Steam. |
+
+These need no session:
+
+| Endpoint | Description |
+|---|---|
+| `GET /login`, `POST /login` | Login page and form (`password` field). Sets the session cookie. |
+| `POST /logout` | Deletes the session cookie |
 | `GET /metrics` | Prometheus metrics |
 
 ## Development
@@ -187,17 +205,30 @@ The migration also runs automatically on start. Stop the bot before you run it m
 ### Project structure
 
 ```
-index.js              Bot entry point: Steam login, offers, chat
-utils.js              Offer mapping and validation (trade rules)
-config.js             Loads and writes .env, field metadata for the web UI
-db.js, migrations.js  SQLite storage and schema migrations
-discord.js            Discord webhook
-metrics.js            Prometheus metrics
-events.js             Event bus between bot and web server
-state.js              Runtime state for the status page
-logger.js             Winston logger with daily log files
-web/server.js         Express server and auth
-web/routes/           API routes
-web/public/           Web UI (HTML, CSS, JS)
-scripts/              Manual maintenance scripts
+index.js                  Bot entry point: Steam login, offers, chat, functions for the web UI
+utils.js                  Offer mapping and validation (trade rules, decline reasons)
+reasons.js                Decline reason codes, codes for old reason texts
+reservations.js           Lock and card reservations for duplicates of protected sets
+inventory.js              Groups the bot inventory by set, reads set sizes from badge pages
+bot.js                    Bridge between web routes and the bot (no circular require)
+config.js                 Loads and writes .env, field metadata for the web UI
+db.js, migrations.js      SQLite storage and schema migrations
+discord.js                Discord webhook
+metrics.js                Prometheus metrics
+events.js                 Event bus between bot and web server
+state.js                  Runtime state for the status page
+logger.js                 Winston logger with daily log files
+*.test.js                 Jest tests (next to the module they test)
+web/server.js             Express server, auth, login and logout
+web/auth.js               Signed session cookie for the login
+web/login.html            Login page template (rendered by the server)
+web/routes/               API routes (status, config, trades, offers, inventory, events, images)
+web/public/index.html     Web UI page
+web/public/app.js         Web UI logic
+web/public/tokens.css     Design tokens and fonts, shared by web UI and login page
+web/public/style.css      Web UI styles
+web/public/login.css      Login page styles
+web/public/login.js       Login page: show or hide the password
+web/public/fonts/         Barlow font files (SIL Open Font License, see OFL.txt)
+scripts/                  Manual maintenance scripts
 ```

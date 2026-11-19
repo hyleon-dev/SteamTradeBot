@@ -38,4 +38,20 @@ function migrateStatsToTimestamp(db) {
   return {migrated: true, rows};
 }
 
-module.exports = {migrateStatsToTimestamp};
+// V 1.4: trades gets reason codes, auto decline flag and manual actions from the web UI.
+// Adds only missing columns. Old rows keep NULL.
+const TRADE_COLUMNS = [
+  ['reason_codes', 'TEXT'],
+  ['auto_declined', 'INTEGER DEFAULT 0'],
+  ['manual_action', 'TEXT'],
+  ['manual_at', 'INTEGER'],
+];
+
+function addTradeColumns(db) {
+  const cols = db.prepare('PRAGMA table_info(trades)').all().map(c => c.name);
+  const missing = TRADE_COLUMNS.filter(([name]) => !cols.includes(name));
+  missing.forEach(([name, type]) => db.exec(`ALTER TABLE trades ADD COLUMN ${name} ${type};`));
+  return {added: missing.map(([name]) => name)};
+}
+
+module.exports = {migrateStatsToTimestamp, addTradeColumns};

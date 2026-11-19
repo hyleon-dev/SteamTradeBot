@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title>Sign in | SteamTradeBot</title>
+  <link rel="preload" href="/fonts/barlow-condensed-600.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/tokens.css">
+  <link rel="stylesheet" href="/login.css">
+</head>
+<body>
+<main class="login">
+  <!-- The sign-in form is a trading card: art window, name strip, type line, text box. -->
+  <form class="login-card" method="post" action="/login">
+    <div class="card-art" aria-hidden="true">
+      <span class="art-card art-gives"></span>
+      <span class="art-card art-gets"></span>
+      <span class="art-card art-front"></span>
+    </div>
+
+    <h1 class="card-name">SteamTradeBot</h1>
+    <p class="card-type">Bot console</p>
+
+    <div class="card-text">
+      <!--MESSAGE-->
+      <!-- Password managers need a user name. There is only one user. -->
+      <input type="text" name="username" autocomplete="username" value="steamtradebot" hidden>
+
+      <label for="password">Password</label>
+      <div class="password-row">
+        <input id="password" name="password" type="password" autocomplete="current-password"
+               autocapitalize="none" autocorrect="off" spellcheck="false" required autofocus data-invalid>
+        <button type="button" id="togglePassword" class="toggle" aria-pressed="false" hidden>Show</button>
+      </div>
+      <p id="passwordHint" class="hint">The value of WEB_AUTH_TOKEN in your .env file.</p>
+
+      <button type="submit" class="sign-in">Sign in</button>
+    </div>
+  </form>
+</main>
+<script src="/login.js"></script>
+</body>
+</html>

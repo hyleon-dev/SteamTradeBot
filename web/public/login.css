@@ -1,0 +1,221 @@
+/* Login page: one trading card in the middle of the page. */
+
+.login {
+  min-block-size: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5) var(--space-4);
+}
+
+/* Portrait card, about the 5:7 shape of a trading card. The height follows the content
+   on small screens, so nothing gets cut off. */
+.login-card {
+  position: relative;
+  inline-size: min(100%, 22rem);
+  min-block-size: 30rem;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3);
+  background: var(--sleeve);
+  border: 1px solid var(--rule-strong);
+  border-radius: 14px;
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 24px 48px -24px rgb(0 0 0 / 0.6);
+}
+
+/* Foil: a light band runs once along the card edge when you start to type.
+   Only the border ring shows it (mask), the content stays calm. */
+.login-card::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(115deg,
+  transparent 35%,
+  rgb(255 255 255 / 0.7) 45%,
+  var(--accent) 50%,
+  var(--gets) 55%,
+  transparent 65%) 120% 0 / 300% 100% no-repeat;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .login-card:focus-within::before {
+    animation: foil-sweep 1.4s ease-out 1;
+  }
+}
+
+@keyframes foil-sweep {
+  0% {
+    opacity: 1;
+    background-position: 120% 0;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    background-position: -20% 0;
+  }
+}
+
+/* Art window: three cards fanned out. Amber (gives) and teal (gets) behind, the bot card in front. */
+.card-art {
+  position: relative;
+  block-size: 11rem;
+  border-radius: 8px;
+  background: var(--page);
+  border: 1px solid var(--rule);
+  overflow: hidden;
+}
+
+.art-card {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: 50%;
+  inline-size: 4.5rem;
+  block-size: 6.3rem;
+  margin: -3.15rem 0 0 -2.25rem;
+  border-radius: 6px;
+  border: 2px solid;
+  background: var(--sleeve);
+}
+
+.art-gives {
+  border-color: var(--gives);
+  rotate: -14deg;
+  translate: -1.6rem 0.3rem;
+}
+
+.art-gets {
+  border-color: var(--gets);
+  rotate: 12deg;
+  translate: 1.6rem 0.3rem;
+}
+
+/* Front card: name strip and art box, drawn with borders */
+.art-front {
+  border-color: var(--paper);
+  background: linear-gradient(var(--raised) 0 0) 50% 0.5rem / 3.3rem 2.6rem no-repeat,
+  var(--sleeve);
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: auto 0.45rem 0.7rem;
+    block-size: 0.25rem;
+    border-radius: 2px;
+    background: var(--graphite);
+    box-shadow: 0 -0.55rem 0 var(--rule-strong);
+  }
+}
+
+/* Name strip like on a card: condensed, tight, large */
+.card-name {
+  margin: var(--space-3) var(--space-1) 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--step-3);
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+.card-type {
+  margin: var(--space-1) var(--space-1) 0;
+  padding-block-end: var(--space-3);
+  border-block-end: 1px solid var(--rule);
+  color: var(--graphite);
+  font-size: var(--step--1);
+}
+
+.card-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: var(--space-4) var(--space-1) var(--space-1);
+}
+
+.card-text label {
+  font-weight: 500;
+  margin-block-end: var(--space-1);
+}
+
+.password-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.password-row input {
+  flex: 1;
+  min-inline-size: 0;
+  padding: 10px 12px;
+  font-size: max(1rem, 1em);
+  color: var(--paper);
+  background: var(--page);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-control);
+
+  &[aria-invalid="true"] {
+    border-color: var(--bad);
+  }
+}
+
+.toggle {
+  padding: 0 var(--space-3);
+  min-inline-size: 4rem;
+  color: var(--paper);
+  background: transparent;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--graphite);
+  }
+}
+
+.hint {
+  margin: var(--space-2) 0 0;
+  color: var(--graphite);
+  font-size: var(--step--1);
+}
+
+/* Pushed to the bottom of the card, like the stats row on a trading card */
+.sign-in {
+  margin-block-start: auto;
+  padding: 12px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: 0;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+
+  &:hover {
+    filter: brightness(1.08);
+  }
+}
+
+.card-text > .hint {
+  margin-block-end: var(--space-5);
+}
+
+.login-message {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--step--1);
+  border-radius: var(--radius-control);
+  border-inline-start: 3px solid var(--graphite);
+  background: var(--raised);
+
+  &.is-error {
+    border-inline-start-color: var(--bad);
+  }
+
+  &.is-error::before {
+    content: "✕ ";
+    color: var(--bad);
+  }
+}

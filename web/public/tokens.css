@@ -1,0 +1,117 @@
+/* Shared design tokens for the app and the login page.
+   Idea: the bot works with trading cards. Cards in (gets) and cards out (gives)
+   have one fixed color each, everywhere in the UI. Text never uses these colors. */
+
+/* Barlow (SIL Open Font License, see fonts/OFL.txt). Local files, no request to a font CDN. */
+@font-face {
+  font-family: "Barlow";
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/barlow-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Barlow";
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/barlow-500.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Barlow";
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/barlow-600.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Barlow Condensed";
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/barlow-condensed-500.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Barlow Condensed";
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/barlow-condensed-600.woff2") format("woff2");
+}
+
+:root {
+  color-scheme: dark;
+
+  /* Surfaces: a binder at night. Blue-gray, not black. */
+  --page: #121a24;
+  --sleeve: #1a2431;
+  --raised: #223042;
+  --rule: #2d3d52;
+  --rule-strong: #3d5170;
+
+  /* Text */
+  --paper: #e8edf4;
+  --graphite: #95a3b8;
+
+  /* Interactive elements (links, focus, selected tab) */
+  --accent: #5b8ef0;
+  --accent-ink: #0d1a33;
+
+  /* Card flow. Validated pair (dark surface, CVD safe). Marks only, never text. */
+  --gets: #1fa696;
+  --gives: #c27d22;
+
+  /* Second chart series (accepted offers). Validated with --accent. */
+  --series-2: #d16ba5;
+
+  /* Status. Always with an icon or word, never color alone. */
+  --ok: #4cc27a;
+  --bad: #e5636a;
+  --warn: #d8b64a;
+
+  /* Type: Barlow for text, Barlow Condensed for names and numbers (like the name strip on a card) */
+  --font-text: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Barlow Condensed", "Barlow", system-ui, sans-serif;
+
+  /* Type scale, ratio about 1.25 */
+  --step--1: 0.8125rem; /* 13px */
+  --step-0: 0.9375rem; /* 15px */
+  --step-1: 1.1875rem; /* 19px */
+  --step-2: 1.5rem; /* 24px */
+  --step-3: 2.25rem; /* 36px */
+
+  /* Radius by role: cards look like cards, controls like controls */
+  --radius-card: 10px;
+  --radius-control: 6px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 40px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--paper);
+  font-family: var(--font-text);
+  font-size: var(--step-0);
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+:where(button, input, select, textarea) {
+  font: inherit;
+}
+
+:where(a:any-link, button, input, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

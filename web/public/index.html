@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SteamTradeBot</title>
+  <link rel="preload" href="/fonts/barlow-condensed-600.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/barlow-400.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="tokens.css">
   <link rel="stylesheet" href="style.css">
   <!-- Pinned version with SRI hash. The browser rejects the file if the CDN serves other content. -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"
@@ -11,87 +14,168 @@
           crossorigin="anonymous"></script>
 </head>
 <body>
-<header>
-  <h1>🤖 SteamTradeBot</h1>
-  <nav id="tabs">
-    <button class="tab active" data-tab="dashboard">Dashboard</button>
-    <button class="tab" data-tab="trades">Trades</button>
-    <button class="tab" data-tab="config">Config</button>
-    <button class="tab" data-tab="status">Status</button>
-  </nav>
+<header class="topbar">
+  <div class="brand">
+    <h1 class="wordmark">SteamTradeBot</h1>
+    <!-- Updated every 30 s. No live region: the Status tab has the details. -->
+    <span id="botState" class="bot-state" data-state="unknown">Bot state unknown</span>
+  </div>
+  <!-- Tabs switch panels on this page. Arrow keys move focus, Enter or Space selects (panels load data). -->
+  <div id="tabs" class="tablist" role="tablist" aria-label="Sections" focusgroup="tablist nomemory">
+    <button type="button" class="tab" role="tab" id="tab-dashboard" data-tab="dashboard" aria-selected="true" focusgroupstart>Dashboard</button>
+    <button type="button" class="tab" role="tab" id="tab-offers" data-tab="offers" aria-selected="false">Open offers <span id="offersCount" class="tab-count" hidden></span></button>
+    <button type="button" class="tab" role="tab" id="tab-trades" data-tab="trades" aria-selected="false">Trades</button>
+    <button type="button" class="tab" role="tab" id="tab-inventory" data-tab="inventory" aria-selected="false">Inventory</button>
+    <button type="button" class="tab" role="tab" id="tab-config" data-tab="config" aria-selected="false">Config</button>
+    <button type="button" class="tab" role="tab" id="tab-status" data-tab="status" aria-selected="false">Status</button>
+  </div>
+  <!-- Plain form: works without JavaScript. Shown only when a password is set. -->
+  <form id="signOut" class="sign-out" method="post" action="/logout" hidden>
+    <button type="submit" class="quiet">Sign out</button>
+  </form>
 </header>
 
 <main>
-  <section id="dashboard" class="panel active">
-    <div class="tiles" id="tiles"></div>
-    <div class="chart-row">
-      <div class="chart-box">
-        <canvas id="tradesChart"></canvas>
-      </div>
-      <div class="chart-box">
-        <canvas id="cardsChart"></canvas>
-      </div>
-    </div>
+  <section id="dashboard" class="panel" role="tabpanel" aria-labelledby="tab-dashboard">
+    <!-- Filters in one row above the charts -->
     <div class="controls">
-      <label>Group by:
-        <select id="groupBy">
-          <option value="day">Day</option>
-          <option value="week">Week</option>
-          <option value="month">Month</option>
-        </select>
-      </label>
+      <label for="groupBy">Group by</label>
+      <select id="groupBy">
+        <option value="day">Day</option>
+        <option value="week">Week</option>
+        <option value="month">Month</option>
+      </select>
     </div>
+    <div class="ledger" id="tiles"></div>
+    <div class="chart-row">
+      <figure class="chart-box">
+        <figcaption class="chart-title">Offers</figcaption>
+        <div class="chart-canvas"><canvas id="tradesChart" role="img" aria-label="Line chart: offers and accepted offers over time. Totals are in the row above."></canvas></div>
+      </figure>
+      <figure class="chart-box">
+        <figcaption class="chart-title">Cards</figcaption>
+        <div class="chart-canvas"><canvas id="cardsChart" role="img" aria-label="Line chart: cards the bot got and gave over time. Totals are in the row above."></canvas></div>
+      </figure>
+    </div>
+
+    <section class="reason-stats">
+      <div class="section-head">
+        <h2 id="reasonStatsTitle">Decline reasons</h2>
+        <div class="controls">
+          <label for="reasonDays">Period</label>
+          <select id="reasonDays">
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="">All time</option>
+          </select>
+        </div>
+      </div>
+      <p class="hint">Declined offers per reason. One offer can have more than one reason.</p>
+      <div id="reasonTotals" class="ledger"></div>
+      <!-- role="list": Safari drops list semantics with list-style: none and display: grid -->
+      <ol id="reasonList" class="bar-list" role="list" aria-labelledby="reasonStatsTitle"></ol>
+    </section>
   </section>
 
-  <section id="trades" class="panel">
+  <section id="offers" class="panel" role="tabpanel" aria-labelledby="tab-offers" hidden>
     <div class="controls">
-      <label>Filter:
-        <select id="tradeFilter">
-          <option value="">All</option>
-          <option value="true">Accepted</option>
-          <option value="false">Declined</option>
-        </select>
-      </label>
-      <button id="reloadTrades">Refresh</button>
+      <button type="button" id="reloadOffers">Refresh</button>
+      <span id="offersMsg" role="status"></span>
     </div>
+    <p class="hint">Active offers on Steam. Accept and decline act on Steam right away. A manual accept does not check the trade rules again.</p>
+    <div id="offersList" class="offer-list"></div>
+  </section>
+
+  <section id="trades" class="panel" role="tabpanel" aria-labelledby="tab-trades" hidden>
+    <search class="controls">
+      <label for="tradeFilter">Show</label>
+      <select id="tradeFilter">
+        <option value="">All</option>
+        <option value="true">Accepted</option>
+        <option value="false">Declined</option>
+      </select>
+      <button type="button" id="reloadTrades">Refresh</button>
+    </search>
+    <!-- Wide table scrolls inside this box, not the page. tabindex: keyboard users can scroll it too. -->
+    <div class="table-wrap" role="region" aria-label="Trades" tabindex="0">
     <table id="tradesTable">
+      <caption class="visually-hidden">Last 100 offers. Select the time of an offer to see its details.</caption>
       <thead>
       <tr>
-        <th>Time</th>
-        <th>Partner</th>
-        <th>Received</th>
-        <th>Given</th>
-        <th>Status</th>
-        <th>Reason</th>
+        <th scope="col">Time</th>
+        <th scope="col">Partner</th>
+        <th scope="col">Bot gets</th>
+        <th scope="col">Bot gives</th>
+        <th scope="col">Status</th>
+        <th scope="col">Reason</th>
       </tr>
       </thead>
       <tbody></tbody>
     </table>
-    <dialog id="tradeDialog" aria-labelledby="tradeDialogTitle">
-      <div class="dialog-head">
-        <h2 id="tradeDialogTitle">Trade details</h2>
-        <button type="button" class="dialog-close" aria-label="Close">✕</button>
-      </div>
-      <div id="tradeDialogBody"></div>
-    </dialog>
+    </div>
   </section>
 
-  <section id="config" class="panel">
+  <section id="inventory" class="panel" role="tabpanel" aria-labelledby="tab-inventory" hidden>
+    <search class="controls">
+      <label for="invSearch">Search</label>
+      <input type="search" id="invSearch" placeholder="Game or card" autocomplete="off"
+             autocorrect="off" autocapitalize="none" spellcheck="false">
+      <span class="check"><input type="checkbox" id="invProtected"><label for="invProtected">Protected sets only</label></span>
+      <span class="check"><input type="checkbox" id="invDuplicates"><label for="invDuplicates">With duplicates only</label></span>
+      <button type="button" id="reloadInventory">Refresh</button>
+      <progress id="invLoading" aria-label="Loading inventory" hidden></progress>
+    </search>
+    <p id="invMsg" class="hint" role="status"></p>
+    <p class="hint">Cards of the bot by set. Open a set to see its cards. The set size comes from the badge page of the bot. It loads when you open a set, or for all sets with the button below. Loaded sizes are stored and never load again.</p>
+    <!-- Action, not a filter: outside <search>. Progress is visual only, the result goes to #invMsg. -->
+    <div class="size-loader">
+      <button type="button" id="loadAllSizes" disabled>Load missing set sizes</button>
+      <progress id="sizeProgress" value="0" max="1" aria-label="Set sizes loaded" hidden></progress>
+      <span id="sizeProgressText" class="hint" hidden></span>
+    </div>
+    <div id="invSummary" class="ledger"></div>
+    <div id="invList" class="set-list" aria-label="Card sets"></div>
+  </section>
+
+  <section id="config" class="panel" role="tabpanel" aria-labelledby="tab-config" hidden>
     <p class="hint">Groups marked <span class="badge restart">Restart</span> take effect after a restart. Enter ID lists comma-separated. Leave secret fields empty to keep the current value.</p>
     <form id="configForm">
       <div id="configFields"></div>
       <div class="save-bar">
-        <button type="submit">Save</button>
+        <button type="submit">Save changes</button>
         <span id="configMsg" role="status"></span>
       </div>
     </form>
   </section>
 
-  <section id="status" class="panel">
+  <section id="status" class="panel" role="tabpanel" aria-labelledby="tab-status" hidden>
     <div id="statusInfo"></div>
-    <button id="reloadStatus">Refresh</button>
+    <button type="button" id="reloadStatus">Refresh</button>
   </section>
 </main>
+
+<!-- Dialogs live outside the panels. A dialog inside a hidden panel does not render. -->
+<dialog id="tradeDialog" aria-labelledby="tradeDialogTitle" closedby="any">
+  <div class="dialog-head">
+    <h2 id="tradeDialogTitle">Trade details</h2>
+    <form method="dialog">
+      <button class="dialog-close" aria-label="Close" autofocus>✕</button>
+    </form>
+  </div>
+  <div id="tradeDialogBody"></div>
+</dialog>
+
+<dialog id="confirmDialog" aria-labelledby="confirmTitle" aria-describedby="confirmText">
+  <form method="dialog">
+    <h2 id="confirmTitle">Confirm</h2>
+    <p id="confirmText"></p>
+    <div class="dialog-actions">
+      <!-- Safe action first and focused. The destructive button does not move under the pointer. -->
+      <button value="cancel" autofocus>Cancel</button>
+      <button value="ok" id="confirmOk" class="primary">OK</button>
+    </div>
+  </form>
+</dialog>
 
 <script src="app.js"></script>
 </body>

@@ -20,12 +20,17 @@ router.get('/', (req, res) => {
   const onTrade = (data) => {
     res.write(`event: trade\ndata: ${JSON.stringify(data)}\n\n`);
   };
+  const onOffer = (data) => {
+    res.write(`event: offer\ndata: ${JSON.stringify(data)}\n\n`);
+  };
   const ping = setInterval(() => res.write(': ping\n\n'), PING_MS);
 
   events.on('trade', onTrade);
+  events.on('offer', onOffer);
   req.on('close', () => {
     clearInterval(ping);
     events.off('trade', onTrade);
+    events.off('offer', onOffer);
   });
 });
 

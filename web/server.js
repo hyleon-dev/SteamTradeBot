@@ -1,5 +1,7 @@
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
+const auth = require('./auth');
 const express = require('express');
 const config = require('../config');
 const logger = require('../logger');
@@ -9,6 +11,8 @@ const configRoutes = require('./routes/config');
 const tradesRoutes = require('./routes/trades');
 const imagesRoutes = require('./routes/images');
 const eventsRoutes = require('./routes/events');
+const offersRoutes = require('./routes/offers');
+const inventoryRoutes = require('./routes/inventory');
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
@@ -52,10 +56,12 @@ function safeEqual(a, b) {
 }
 
 // Auth middleware for the web UI.
-// With WEB_AUTH_TOKEN: basic auth. Any user name. Password must match the token.
+// With WEB_AUTH_TOKEN: a session cookie from the login page. Basic auth in the
+// Authorization header still works for scripts, but the server never asks for it.
+// So the browser never shows its own login dialog.
 // Without token: only requests with a loopback Host header. This blocks DNS
 // rebinding, where a foreign website sends requests to 127.0.0.1 in the browser.
-function basicAuth(req, res, next) {
+function requireAuth(req, res, next) {
   const token = config.web_auth_token;
   if (!token) {
     if (LOOPBACK_HOSTS.has(req.hostname)) {
@@ -66,7 +72,11 @@ function basicAuth(req, res, next) {
 
   const ip = req.ip;
   if (isLockedOut(ip)) {
-    return res.status(429).send('Too many failed logins. Try again later.');
+    return res.status(429).json({error: 'Too many wrong passwords. Try again in 15 minutes.'});
+  }
+
+  if (auth.verifySession(token, auth.readCookie(req))) {
+    return next();
   }
 
   const header = req.headers.authorization || '';
@@ -80,8 +90,88 @@ function basicAuth(req, res, next) {
     }
     recordFailedLogin(ip);
   }
-  res.set('WWW-Authenticate', 'Basic realm="SteamTradeBot"');
-  return res.status(401).send('Authentication required');
+
+  // API calls get JSON, the web UI then opens the login page. Pages redirect directly.
+  if (req.originalUrl.startsWith('/api/') || req.originalUrl.startsWith('/images/')) {
+    return res.status(401).json({error: 'Sign in required'});
+  }
+  return res.redirect(303, '/login');
+}
+
+// ---- Login page ----
+// Server-rendered, so it works without JavaScript. Messages come from fixed codes,
+// never from user input.
+const LOGIN_TEMPLATE = fs.readFileSync(path.join(__dirname, 'login.html'), 'utf8');
+const LOGIN_MESSAGES = {
+  wrong: 'Wrong password. Use the value of WEB_AUTH_TOKEN from your .env file.',
+  locked: 'Too many wrong passwords. Try again in 15 minutes.',
+  out: 'You are signed out.',
+};
+
+function renderLogin(code) {
+  const message = LOGIN_MESSAGES[code];
+  const isError = code === 'wrong' || code === 'locked';
+  return LOGIN_TEMPLATE
+      .replace('<!--MESSAGE-->', message
+          ? `<p id="loginMessage" class="login-message${isError ? ' is-error' : ''}" role="${isError ? 'alert' : 'status'}">${message}</p>`
+          : '')
+      .replace('data-invalid', isError ? 'aria-invalid="true" aria-describedby="loginMessage passwordHint"'
+          : 'aria-describedby="passwordHint"');
+}
+
+function mountLogin(app) {
+  // Login page assets need no session. Fonts are public files (SIL OFL).
+  app.get('/login.css', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.css')));
+  app.get('/login.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.js')));
+  app.get('/tokens.css', (req, res) => res.sendFile(path.join(__dirname, 'public', 'tokens.css')));
+  app.use('/fonts', express.static(path.join(__dirname, 'public', 'fonts'), {maxAge: '30d', immutable: true}));
+
+  app.get('/login', (req, res) => {
+    const token = config.web_auth_token;
+    if (!token || auth.verifySession(token, auth.readCookie(req))) {
+      return res.redirect(303, '/');
+    }
+    res.type('html').send(renderLogin(String(req.query.m || '')));
+  });
+
+  app.post('/login', express.urlencoded({extended: false, limit: '2kb'}), (req, res) => {
+    const token = config.web_auth_token;
+    if (!token) {
+      return res.redirect(303, '/');
+    }
+    const ip = req.ip;
+    if (isLockedOut(ip)) {
+      return res.redirect(303, '/login?m=locked');
+    }
+    if (!safeEqual(String(req.body?.password ?? ''), token)) {
+      recordFailedLogin(ip);
+      return res.redirect(303, isLockedOut(ip) ? '/login?m=locked' : '/login?m=wrong');
+    }
+    failedLogins.delete(ip);
+    const session = auth.createSession(token);
+    res.cookie(auth.COOKIE_NAME, session.value, auth.cookieOptions(req, session.maxAgeMs));
+    logger.info(`Web UI: sign in from ${ip}`);
+    return res.redirect(303, '/');
+  });
+
+  // Plain form POST. A forged sign out from another site only signs you out.
+  app.post('/logout', (req, res) => {
+    res.clearCookie(auth.COOKIE_NAME, auth.cookieOptions(req));
+    return res.redirect(303, config.web_auth_token ? '/login?m=out' : '/');
+  });
+}
+
+// CSRF guard for write requests. A foreign website can send a simple POST
+// (form, text/plain) without a CORS preflight. application/json needs a preflight,
+// and this server allows no CORS. The SameSite=Strict cookie is a second guard.
+function requireJson(req, res, next) {
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+    return next();
+  }
+  if (!req.is('application/json')) {
+    return res.status(415).json({error: 'Content-Type must be application/json'});
+  }
+  return next();
 }
 
 function startServer() {
@@ -92,14 +182,19 @@ function startServer() {
   mountMetrics(app);
 
   if (config.web_ui_enabled) {
-    app.use('/api', basicAuth);
+    mountLogin(app);
+    app.use('/api', requireAuth, requireJson);
+    // Tells the web UI if sign out makes sense
+    app.get('/api/session', (req, res) => res.json({authEnabled: !!config.web_auth_token}));
     app.use('/api/status', statusRoutes);
     app.use('/api/config', configRoutes);
     app.use('/api/events', eventsRoutes);
+    app.use('/api/offers', offersRoutes);
+    app.use('/api/inventory', inventoryRoutes);
     app.use('/api', tradesRoutes);
-    app.use('/images', basicAuth, imagesRoutes);
+    app.use('/images', requireAuth, imagesRoutes);
 
-    app.use(basicAuth, express.static(path.join(__dirname, 'public')));
+    app.use(requireAuth, express.static(path.join(__dirname, 'public')));
     logger.info('Web UI enabled');
     if (!config.web_auth_token) {
       logger.warn('Web UI has no WEB_AUTH_TOKEN. Access only via localhost/127.0.0.1.');

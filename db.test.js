@@ -144,3 +144,57 @@ describe('migrateStatsToTimestamp', () => {
         mem.close();
     });
 });
+
+describe('reason codes, manual actions, set sizes', () => {
+    const { getTrade, setManualAction, getReasonStats, getSetSizes, saveSetSize } = require('./db');
+    const ts = Date.UTC(2027, 0, 10, 12, 0, 0);
+
+    test('stores reason codes and auto decline flag', () => {
+        logTrade(baseTrade({ trade_id: 'rc1', timestamp: ts, accepted: false,
+            reason: ['🔴 x'], reasonCodes: ['ratio', 'ratio', 'never_give'], autoDeclined: true }));
+        const t = getTrade('rc1');
+        expect(t.reason_codes).toEqual(['ratio', 'never_give']);
+        expect(t.auto_declined).toBe(true);
+    });
+
+    test('old rows without codes get codes from the texts', () => {
+        logTrade(baseTrade({ trade_id: 'rc2', timestamp: ts, accepted: false,
+            reason: ['🔴 Cross trading does not add up'] }));
+        expect(getTrade('rc2').reason_codes).toEqual(['ratio']);
+    });
+
+    test('manual action is stored', () => {
+        setManualAction('rc2', 'accepted');
+        const t = getTrade('rc2');
+        expect(t.manual_action).toBe('accepted');
+        expect(t.manual_at).toBeGreaterThan(0);
+    });
+
+    test('getReasonStats counts per code and totals', () => {
+        const { reasons, totals } = getReasonStats({ from: ts - 1000 });
+        expect(reasons).toEqual([{ code: 'ratio', count: 2 }, { code: 'never_give', count: 1 }]);
+        expect(totals).toEqual({ declined: 2, autoDeclined: 1, manualAccepted: 1, manualDeclined: 0 });
+    });
+
+    test('set sizes are saved and read', () => {
+        saveSetSize('440', 9);
+        expect(getSetSizes(['440', '441']).get('440')).toBe(9);
+        expect(getSetSizes(['441']).has('441')).toBe(false);
+    });
+
+    test('getTrade returns null for unknown id', () => {
+        expect(getTrade('nope')).toBeNull();
+    });
+});
+
+describe('addTradeColumns', () => {
+    const { addTradeColumns } = require('./migrations');
+
+    test('adds missing columns once', () => {
+        const mem = new Database(':memory:');
+        mem.exec('CREATE TABLE trades (trade_id TEXT PRIMARY KEY, reason TEXT);');
+        expect(addTradeColumns(mem).added).toEqual(['reason_codes', 'auto_declined', 'manual_action', 'manual_at']);
+        expect(addTradeColumns(mem).added).toEqual([]);
+        mem.close();
+    });
+});

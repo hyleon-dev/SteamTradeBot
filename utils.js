@@ -347,5 +347,6 @@ module.exports = {
     mapSteamOffer,
     validateOffer,
     itemsToText,
+    trimItemType,
     loadImage
 };

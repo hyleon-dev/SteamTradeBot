@@ -6,13 +6,15 @@ const SteamID = require('steamid');
 const config = require('./config');
 const logger = require('./logger');
 const state = require('./state');
-const { db, logOffer, logMessage, logTrade } = require('./db');
+const { db, logOffer, logMessage, logTrade, getTrade, setManualAction, getSetSizes, saveSetSize } = require('./db');
 const { errorCounter, reconnectCounter } = require('./metrics');
 const { startServer } = require('./web/server');
 const { sendDiscordMessage } = require('./discord');
 const events = require('./events');
 const { mapSteamOffer, validateOffer, itemsToText } = require('./utils');
 const { createLock, CardReservations } = require('./reservations');
+const { groupCardsBySet, parseSetSize } = require('./inventory');
+const bot = require('./bot');
 
 const steamClient = new SteamUser();
 const community = new SteamCommunity();
@@ -58,22 +60,26 @@ function getTradeRules() {
     };
 }
 
-// Counts cards in the bot inventory per market_hash_name (Steam app 753, context 6).
+// Loads the Steam community inventory of the bot (app 753, context 6), also non-tradable items.
+function loadCardInventory() {
+    return new Promise((resolve, reject) => {
+        manager.getInventoryContents(753, 6, false, (err, inventory) => (err ? reject(err) : resolve(inventory)));
+    });
+}
+
+// Counts cards in the bot inventory per market_hash_name.
 // Non-tradable cards count too, because they stay in the inventory.
 // Returns null on error. Then soft-give cards are not given.
-function loadOwnedCardCounts() {
-    return new Promise(resolve => {
-        manager.getInventoryContents(753, 6, false, (err, inventory) => {
-            if (err) {
-                logger.warn(`Could not load bot inventory: ${err.message}`);
-                resolve(null);
-                return;
-            }
-            const counts = new Map();
-            inventory.forEach(item => counts.set(item.market_hash_name, (counts.get(item.market_hash_name) || 0) + 1));
-            resolve(counts);
-        });
-    });
+async function loadOwnedCardCounts() {
+    try {
+        const inventory = await loadCardInventory();
+        const counts = new Map();
+        inventory.forEach(item => counts.set(item.market_hash_name, (counts.get(item.market_hash_name) || 0) + 1));
+        return counts;
+    } catch (err) {
+        logger.warn(`Could not load bot inventory: ${err.message}`);
+        return null;
+    }
 }
 
 // Offers with soft-give cards are checked one after the other.
@@ -316,6 +322,8 @@ async function handleNewOffer(steamOffer) {
         itemsToGive: offer.itemsToGive,
         accepted: result.accepted,
         reason: result.accepted ? null : storedReasons,
+        reasonCodes: result.reasons.map(r => r.code),
+        autoDeclined: autoDeclined,
     });
     // Web UI reloads the trade list live.
     events.emit('trade', { trade_id: String(steamOffer.id), accepted: result.accepted });
@@ -341,6 +349,8 @@ async function handleNewOffer(steamOffer) {
 
 // Release the reservation when the offer is done. Active offers keep it.
 manager.on('receivedOfferChanged', (offer) => {
+    // Web UI reloads the open offers live.
+    events.emit('offer', { trade_id: String(offer.id), state: TradeOfferManager.ETradeOfferState[offer.state] });
     if (!reservations.has(offer.id)) return;
     const S = TradeOfferManager.ETradeOfferState;
     if (offer.state === S.Active || offer.state === S.CreatedNeedsConfirmation) return;
@@ -417,3 +427,108 @@ function acceptOffer(offer, attempt = 0) {
         }
     });
 }
+
+// ---- Functions for the web UI (via bot.js) ----
+
+function getSteamOffer(id) {
+    return new Promise((resolve, reject) => {
+        manager.getOffer(String(id), (err, offer) => (err ? reject(err) : resolve(offer)));
+    });
+}
+
+// Only active offers that the partner sent to the bot can be accepted or declined.
+async function getActiveReceivedOffer(id) {
+    const offer = await getSteamOffer(id);
+    if (offer.isOurOffer) throw new Error('Offer was sent by the bot');
+    if (offer.state !== TradeOfferManager.ETradeOfferState.Active) {
+        throw new Error(`Offer is not active (${TradeOfferManager.ETradeOfferState[offer.state]})`);
+    }
+    return offer;
+}
+
+// Active offers the bot received. Joined with the stored check result.
+function getOpenOffers() {
+    return new Promise((resolve, reject) => {
+        manager.getOffers(TradeOfferManager.EOfferFilter.ActiveOnly, null, (err, sent, received) => {
+            if (err) return reject(err);
+            const S = TradeOfferManager.ETradeOfferState;
+            resolve(received.filter(o => o.state === S.Active).map(steamOffer => {
+                const offer = mapSteamOffer(steamOffer);
+                const stored = getTrade(steamOffer.id);
+                return {
+                    trade_id: String(steamOffer.id),
+                    timestamp: steamOffer.created ? steamOffer.created.getTime() : null,
+                    partner_id: steamOffer.partner.getSteamID64(),
+                    partner_name: stored?.partner_name || null,
+                    items_to_receive: offer.itemsToReceive,
+                    items_to_give: offer.itemsToGive,
+                    // null = bot has not checked this offer (e.g. it came in before this version)
+                    checked: !!stored,
+                    accepted: stored ? stored.accepted : null,
+                    reason: stored?.reason || null,
+                    reason_codes: stored?.reason_codes || [],
+                    manual_action: stored?.manual_action || null,
+                    reserved: reservations.has(steamOffer.id),
+                };
+            }).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
+        });
+    });
+}
+
+// Manual accept from the web UI. The rules are not checked again: you decided.
+// Protected cards are reserved, so parallel offers count them as gone.
+async function manualAcceptOffer(id) {
+    const steamOffer = await getActiveReceivedOffer(id);
+    const softGiveIds = getTradeRules().softBlacklist.give;
+    const softGiveItems = mapSteamOffer(steamOffer).itemsToGive.filter(item => softGiveIds.includes(item.appId));
+    if (softGiveItems.length > 0) {
+        await runExclusive(async () => reservations.reserve(steamOffer.id, softGiveItems));
+    }
+    setManualAction(steamOffer.id, 'accepted');
+    logger.info(`Offer ${steamOffer.id} accepted manually via web UI`);
+    sendDiscordMessage(`🖐️ Offer ${steamOffer.id} accepted manually via web UI.`);
+    // Result (confirmation, errors) goes to log and Discord like a normal accept.
+    acceptOffer(steamOffer);
+}
+
+async function manualDeclineOffer(id) {
+    const steamOffer = await getActiveReceivedOffer(id);
+    await new Promise((resolve, reject) => steamOffer.decline(err => (err ? reject(err) : resolve())));
+    reservations.release(steamOffer.id);
+    setManualAction(steamOffer.id, 'declined');
+    logger.info(`Offer ${steamOffer.id} declined manually via web UI`);
+    sendDiscordMessage(`🖐️ Offer ${steamOffer.id} declined manually via web UI.`);
+}
+
+// Cards of the bot grouped by set. Short cache: the web UI can reload often.
+const INVENTORY_CACHE_MS = 60 * 1000;
+let inventoryCache = null;
+
+async function getInventorySets({ refresh = false } = {}) {
+    if (refresh || !inventoryCache || inventoryCache.expiresAt < Date.now()) {
+        inventoryCache = { items: await loadCardInventory(), loadedAt: Date.now(), expiresAt: Date.now() + INVENTORY_CACHE_MS };
+    }
+    const rules = getTradeRules();
+    const sets = groupCardsBySet(inventoryCache.items, { neverGive: rules.hardBlacklist.give, duplicatesOnly: rules.softBlacklist.give });
+    const sizes = getSetSizes([...new Set(sets.map(s => s.appId))]);
+    sets.forEach(set => { set.setSize = sizes.get(set.appId) ?? null; });
+    return { loadedAt: inventoryCache.loadedAt, sets };
+}
+
+// Set size from the badge page of the bot. Normal and foil sets have the same size.
+// Cached in the DB, because it does not change and the page is slow.
+async function loadSetSize(appId) {
+    const cached = getSetSizes([appId]).get(String(appId));
+    if (cached) return cached;
+    if (!steamClient.steamID) throw new Error('Bot is not logged in');
+    const url = `https://steamcommunity.com/profiles/${steamClient.steamID.getSteamID64()}/gamecards/${encodeURIComponent(appId)}/`;
+    const html = await new Promise((resolve, reject) => {
+        community.httpRequestGet(url, (err, response, body) => (err ? reject(err) : resolve(body)));
+    });
+    const size = parseSetSize(html);
+    if (!size) throw new Error('Set size not found on badge page');
+    saveSetSize(appId, size);
+    return size;
+}
+
+bot.register({ getOpenOffers, manualAcceptOffer, manualDeclineOffer, getInventorySets, loadSetSize });

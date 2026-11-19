@@ -1,5 +1,6 @@
 const Database = require('better-sqlite3');
-const { migrateStatsToTimestamp } = require('./migrations');
+const { migrateStatsToTimestamp, addTradeColumns } = require('./migrations');
+const { codesFromTexts } = require('./reasons');
 
 const db = new Database(process.env.DB_PATH || 'metrics.db');
 
@@ -43,6 +44,16 @@ db.exec(`
 // Migrate existing DBs from the old stats schema (day/month/year/week) to timestamp.
 // Must run before the prepare() statements, so the timestamp column exists.
 migrateStatsToTimestamp(db);
+addTradeColumns(db);
+
+// V 1.4 - number of cards per set. Read from the badge page, so it is cached here.
+db.exec(`
+    CREATE TABLE IF NOT EXISTS set_sizes (
+        app_id TEXT PRIMARY KEY,
+        size INTEGER,
+        updated_at INTEGER
+    );
+`);
 
 const upsertStat = db.prepare(`
     INSERT OR REPLACE INTO stats (trade_id, timestamp, gained, given)
@@ -57,10 +68,10 @@ const upsertMessage = db.prepare(`
 const upsertTrade = db.prepare(`
     INSERT OR REPLACE INTO trades
         (trade_id, timestamp, partner_id, partner_name, items_to_receive, items_to_give,
-         receive_count, give_count, accepted, reason)
+         receive_count, give_count, accepted, reason, reason_codes, auto_declined)
     VALUES
         (@trade_id, @timestamp, @partner_id, @partner_name, @items_to_receive, @items_to_give,
-         @receive_count, @give_count, @accepted, @reason)
+         @receive_count, @give_count, @accepted, @reason, @reason_codes, @auto_declined)
 `);
 
 function logOffer(offer) {
@@ -77,7 +88,8 @@ function logMessage(data) {
 }
 
 // data: { trade_id, timestamp (unix ms), partner_id, partner_name,
-//         itemsToReceive: [], itemsToGive: [], accepted: bool, reason: string[]|null }
+//         itemsToReceive: [], itemsToGive: [], accepted: bool, reason: string[]|null,
+//         reasonCodes: string[]|undefined, autoDeclined: bool|undefined }
 function logTrade(data) {
     upsertTrade.run({
         trade_id: String(data.trade_id),
@@ -90,17 +102,72 @@ function logTrade(data) {
         give_count: (data.itemsToGive ?? []).length,
         accepted: data.accepted ? 1 : 0,
         reason: data.reason ? JSON.stringify(data.reason) : null,
+        reason_codes: data.reasonCodes?.length ? JSON.stringify([...new Set(data.reasonCodes)]) : null,
+        auto_declined: data.autoDeclined ? 1 : 0,
     });
 }
 
 function parseTradeRow(row) {
+    const reason = row.reason ? JSON.parse(row.reason) : null;
     return {
         ...row,
         accepted: !!row.accepted,
+        auto_declined: !!row.auto_declined,
         items_to_receive: JSON.parse(row.items_to_receive || '[]'),
         items_to_give: JSON.parse(row.items_to_give || '[]'),
-        reason: row.reason ? JSON.parse(row.reason) : null,
+        reason,
+        // Old rows have no codes. Then derive them from the texts.
+        reason_codes: row.reason_codes ? JSON.parse(row.reason_codes) : codesFromTexts(reason),
     };
+}
+
+function getTrade(tradeId) {
+    const row = db.prepare('SELECT * FROM trades WHERE trade_id = ?').get(String(tradeId));
+    return row ? parseTradeRow(row) : null;
+}
+
+// action: 'accepted' | 'declined'. Set via the web UI.
+function setManualAction(tradeId, action) {
+    db.prepare('UPDATE trades SET manual_action = ?, manual_at = ? WHERE trade_id = ?')
+        .run(action, Date.now(), String(tradeId));
+}
+
+// Counts declined offers per reason code. An offer with the same code twice counts once.
+// from: optional unix ms.
+function getReasonStats({ from } = {}) {
+    const params = {};
+    let where = 'WHERE accepted = 0';
+    if (from != null) { where += ' AND timestamp >= @from'; params.from = from; }
+    const rows = db.prepare(`SELECT reason, reason_codes, auto_declined, manual_action FROM trades ${where}`).all(params);
+    const counts = new Map();
+    const totals = { declined: rows.length, autoDeclined: 0, manualAccepted: 0, manualDeclined: 0 };
+    rows.forEach(row => {
+        const { reason_codes: codes } = parseTradeRow({ ...row, items_to_receive: null, items_to_give: null });
+        codes.forEach(code => counts.set(code, (counts.get(code) || 0) + 1));
+        if (row.auto_declined) totals.autoDeclined++;
+        if (row.manual_action === 'accepted') totals.manualAccepted++;
+        if (row.manual_action === 'declined') totals.manualDeclined++;
+    });
+    const reasons = Array.from(counts, ([code, count]) => ({ code, count }))
+        .sort((a, b) => b.count - a.count || a.code.localeCompare(b.code));
+    return { reasons, totals };
+}
+
+// Returns Map app_id -> size for the given app IDs.
+function getSetSizes(appIds) {
+    const sizes = new Map();
+    if (appIds.length === 0) return sizes;
+    const stmt = db.prepare('SELECT app_id, size FROM set_sizes WHERE app_id = ?');
+    appIds.forEach(id => {
+        const row = stmt.get(String(id));
+        if (row) sizes.set(row.app_id, row.size);
+    });
+    return sizes;
+}
+
+function saveSetSize(appId, size) {
+    db.prepare('INSERT OR REPLACE INTO set_sizes (app_id, size, updated_at) VALUES (?, ?, ?)')
+        .run(String(appId), size, Date.now());
 }
 
 function getTrades({ from, to, accepted, limit = 100 } = {}) {
@@ -154,4 +221,7 @@ function getMessages({ limit = 100 } = {}) {
     ).all({ limit: lim });
 }
 
-module.exports = { db, logOffer, logMessage, logTrade, getTrades, getTradeAggregates, getMessages };
+module.exports = {
+    db, logOffer, logMessage, logTrade, getTrades, getTrade, getTradeAggregates, getMessages,
+    setManualAction, getReasonStats, getSetSizes, saveSetSize,
+};
