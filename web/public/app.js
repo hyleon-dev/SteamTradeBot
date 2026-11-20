@@ -840,9 +840,9 @@ const LABELS = {
   blocked_app_ids: 'Blocked',
   never_give_app_ids: 'Never give',
   never_get_app_ids: 'Never get',
-  only_same_set_swap_app_ids: 'Only same-set swaps (1:1)',
+  only_same_set_swap_app_ids: 'Only same-set swaps',
   only_give_1_for_2_app_ids: 'Only give 1 for 2',
-  only_get_2_for_1_app_ids: 'Only get 2 for 1',
+  only_get_cross_set_app_ids: 'Only get in cross-set trades',
   give_only_duplicates_app_ids: 'Give only duplicates',
   auto_decline_clear_cases: 'Auto decline clear cases',
   ignore_messages_from: 'Ignore messages from',
@@ -858,19 +858,13 @@ const HINTS = {
       + 'Allowed: same-set swaps, give 1 get 3, give 2 get 6, ...',
   sale_card_get_1_for_2_app_id: 'One App ID. For each card of this game the bot gets, it gives 2 cards of other games (same type). '
       + 'Allowed: get 1 give 2, get 2 give 4, ... and same-set swaps.',
-  blocked_app_ids: 'Bot never gives and never gets cards of these games. Nothing is allowed.',
-  never_give_app_ids: 'Bot never gives cards of these games, also not in same-set swaps. '
-      + 'Still allowed: get them in cross-set trades (unless an "Only" rule says no).',
-  never_get_app_ids: 'Bot never gets cards of these games, also not in same-set swaps. '
-      + 'Still allowed: give them in cross-set trades (unless an "Only" rule says no).',
-  only_same_set_swap_app_ids: 'Allows same-set swaps: same game and type, 1:1, 2:2, ... '
-      + 'Other trade kinds only if another "Only" rule allows them.',
-  only_give_1_for_2_app_ids: 'Allows to give these cards in cross-set trades: give 1, get 2 cards of other games (give 2 get 4, ...). '
-      + 'Other trade kinds only if another "Only" rule allows them.',
-  only_get_2_for_1_app_ids: 'Allows to get these cards in cross-set trades: get 2, give 1 card of another game (get 4 give 2, ...). '
-      + 'Other trade kinds only if another "Only" rule allows them.',
-  give_only_duplicates_app_ids: 'Bot gives cards of these games only if it keeps at least 1 copy of each card. '
-      + 'Works with all trade kinds the other rules allow.',
+  only_same_set_swap_app_ids: 'Same game and type, 1:1, 2:2, ...',
+  only_give_1_for_2_app_ids: 'Bot gives 1 of these cards and gets 2 cards of other games (2 for 4, ...).',
+  only_get_cross_set_app_ids: 'Bot gets these cards in cross-set trades. The other cards it gets can be of any game. Example: get 1 of this game + 1 of game B, give 1 of game C.',
+  never_give_app_ids: 'Removes swap and give.',
+  never_get_app_ids: 'Removes swap and get.',
+  blocked_app_ids: 'Removes all trade kinds.',
+  give_only_duplicates_app_ids: 'Bot keeps at least 1 copy of each card it gives. Applies to swap and give.',
   auto_decline_clear_cases: 'Bot declines clear cases by itself: it would give a non-card item, a card of a game it never gives, '
       + 'or only last copies of protected cards in an N:N offer. Other declined offers stay open for a manual check.',
   ignore_messages_from: 'SteamID64s. Chat messages from them are not forwarded and get no reply.',
@@ -880,15 +874,31 @@ const HINTS = {
 const CONFIG_GROUPS = [
   {
     title: 'Set rules',
-    intro: 'Rules per game (App IDs). You can put a game in more than one list. '
-        + 'Without an "Only" rule all trade kinds are allowed. With "Only" rules, only their trade kinds are allowed. '
-        + '"Never" rules and "Blocked" then remove trade kinds. '
-        + 'Example: "Only same-set swaps" + "Only give 1 for 2" = the bot swaps and gives these cards, but its count of them does not grow.',
-    // Full width. give/get as pairs in 2 columns.
+    intro: 'Rules per game (App IDs). A game can be in more than one list. '
+        + 'The bot applies the steps in this order. The table below shows the result.',
     full: true,
-    keys: ['never_give_app_ids', 'never_get_app_ids',
-      'only_give_1_for_2_app_ids', 'only_get_2_for_1_app_ids',
-      'only_same_set_swap_app_ids', 'give_only_duplicates_app_ids', 'blocked_app_ids']
+    // Steps in the order the bot applies them. See setRules.js.
+    steps: [
+      {
+        title: 'Allow',
+        kind: 'allow',
+        intro: 'Game in no "Only" list: all trade kinds are allowed. '
+            + 'Game in "Only" lists: only the trade kinds of these lists are allowed.',
+        keys: ['only_same_set_swap_app_ids', 'only_give_1_for_2_app_ids', 'only_get_cross_set_app_ids'],
+      },
+      {
+        title: 'Remove',
+        kind: 'remove',
+        intro: 'Applied last. Removes trade kinds, also if an "Only" list allows them.',
+        keys: ['never_give_app_ids', 'never_get_app_ids', 'blocked_app_ids'],
+      },
+      {
+        title: 'Limit giving',
+        kind: 'limit',
+        intro: 'Extra check for the trade kinds that are left.',
+        keys: ['give_only_duplicates_app_ids'],
+      },
+    ],
   },
   {
     title: 'Trade rules',
@@ -922,9 +932,13 @@ async function loadConfig() {
     title: g.title,
     intro: g.intro,
     full: g.full,
-    fields: g.keys.map(k => byKey.get(k)).filter(Boolean),
+    steps: g.steps && g.steps.map(step => ({
+      ...step,
+      fields: step.keys.map(k => byKey.get(k)).filter(Boolean),
+    })),
+    fields: groupKeys(g).map(k => byKey.get(k)).filter(Boolean),
   }));
-  const grouped = new Set(CONFIG_GROUPS.flatMap(g => g.keys));
+  const grouped = new Set(CONFIG_GROUPS.flatMap(groupKeys));
   const rest = fields.filter(f => !grouped.has(f.key));
   if (rest.length) {
     groups.push({title: 'Other', fields: rest});
@@ -932,21 +946,140 @@ async function loadConfig() {
   $('#configFields').innerHTML = groups.filter(g => g.fields.length).map(
       group).join('');
   $('#configMsg').textContent = '';
+  renderSetRulePreview();
 }
 
-function group({title, intro, full, fields}) {
+function groupKeys(g) {
+  return g.steps ? g.steps.flatMap(step => step.keys) : g.keys;
+}
+
+function group({title, intro, full, steps, fields}) {
   // Badge on the group if all fields need a restart
   // or none do. Else badge per field.
   const allRestart = fields.every(f => f.restartRequired);
   const noneRestart = fields.every(f => !f.restartRequired);
   const badge = allRestart ? '<span class="badge restart">Restart</span>'
       : noneRestart ? '<span class="badge hot">applies instantly</span>' : '';
-  const rows = fields.map(f => fieldRow(f, !allRestart && !noneRestart)).join(
-      '');
+  const showBadge = !allRestart && !noneRestart;
+  const introHtml = intro ? `<p class="hint">${escapeHtml(intro)}</p>` : '';
+  const body = steps ? ruleSteps(steps, showBadge) + setRulePreviewTable()
+      : `<div class="field-grid${full ? ' cols-2' : ''}">${fields.map(
+          f => fieldRow(f, showBadge)).join('')}</div>`;
   return `<fieldset class="field-group${full ? ' full'
-      : ''}"><legend>${title}${badge}</legend>${intro ? `<p class="hint">${escapeHtml(intro)}</p>` : ''}<div class="field-grid${full
-      ? ' cols-2' : ''}">${rows}</div></fieldset>`;
+      : ''}"><legend>${title}${badge}</legend>${introHtml}${body}</fieldset>`;
 }
+
+// Numbered steps of the set rules. The list order is the order the bot applies them.
+function ruleSteps(steps, showBadge) {
+  const items = steps.filter(step => step.fields.length).map(step => `
+    <li class="rule-step ${step.kind}">
+      <h3 class="rule-step-title">${escapeHtml(step.title)}</h3>
+      <p class="hint">${escapeHtml(step.intro)}</p>
+      <div class="field-grid cols-3">${step.fields.map(f => fieldRow(f, showBadge)).join('')}</div>
+    </li>`).join('');
+  return `<ol class="rule-steps">${items}</ol>`;
+}
+
+// ---- Set rule preview ----
+// Same logic as setRules.js. Shows the result per game while you type.
+const SET_RULE_KEYS = {
+  onlySwap: 'only_same_set_swap_app_ids',
+  onlyGive: 'only_give_1_for_2_app_ids',
+  onlyGet: 'only_get_cross_set_app_ids',
+  neverGive: 'never_give_app_ids',
+  neverGet: 'never_get_app_ids',
+  blocked: 'blocked_app_ids',
+  duplicatesOnly: 'give_only_duplicates_app_ids',
+};
+const TRADE_KINDS = [
+  {kind: 'swap', only: 'onlySwap', label: 'Swap'},
+  {kind: 'give', only: 'onlyGive', label: 'Give 1 for 2'},
+  {kind: 'get', only: 'onlyGet', label: 'Get cross-set'},
+];
+// Rules that remove a trade kind, in the order they apply.
+const REMOVERS = [
+  {list: 'neverGive', kinds: ['swap', 'give']},
+  {list: 'neverGet', kinds: ['swap', 'get']},
+  {list: 'blocked', kinds: ['swap', 'give', 'get']},
+];
+
+function readSetRuleLists() {
+  const lists = {};
+  Object.entries(SET_RULE_KEYS).forEach(([name, key]) => {
+    const input = document.getElementById(`cfg-${key}`);
+    lists[name] = input ? input.value.split(',').map(s => s.trim()).filter(Boolean) : [];
+  });
+  return lists;
+}
+
+// Returns per trade kind: {allowed, reason}. reason = label of the rule that blocks it.
+function setRuleResult(appId, lists) {
+  const inOnly = TRADE_KINDS.filter(t => lists[t.only].includes(appId));
+  const result = {};
+  TRADE_KINDS.forEach(t => {
+    if (inOnly.length > 0 && !inOnly.includes(t)) {
+      result[t.kind] = {allowed: false, reason: 'not in an "Only" list'};
+      return;
+    }
+    const remover = REMOVERS.filter(r => lists[r.list].includes(appId) && r.kinds.includes(t.kind)).pop();
+    result[t.kind] = remover
+        ? {allowed: false, reason: LABELS[SET_RULE_KEYS[remover.list]], removed: true}
+        : {allowed: true};
+  });
+  return result;
+}
+
+function setRulePreviewTable() {
+  const head = TRADE_KINDS.map(t => `<th scope="col">${t.label}</th>`).join('');
+  return `
+    <div class="table-wrap rule-preview" tabindex="0" role="region" aria-labelledby="rulePreviewCaption">
+      <table>
+        <caption id="rulePreviewCaption">Result per game</caption>
+        <thead><tr><th scope="col">App ID</th>${head}<th scope="col">Note</th></tr></thead>
+        <tbody id="rulePreviewBody"></tbody>
+      </table>
+    </div>`;
+}
+
+function renderSetRulePreview() {
+  const body = document.getElementById('rulePreviewBody');
+  if (!body) {
+    return;
+  }
+  const lists = readSetRuleLists();
+  const ids = [...new Set(Object.values(lists).flat())]
+      .sort((a, b) => Number(a) - Number(b) || a.localeCompare(b));
+  if (ids.length === 0) {
+    body.innerHTML = `<tr><td colspan="${TRADE_KINDS.length + 2}" class="empty">No game in a set rule. All trade kinds are allowed for all games.</td></tr>`;
+    return;
+  }
+  body.innerHTML = ids.map(appId => {
+    const result = setRuleResult(appId, lists);
+    const cells = TRADE_KINDS.map(t => {
+      const r = result[t.kind];
+      if (r.allowed) {
+        return '<td class="kind yes"><span aria-hidden="true">✓</span> allowed</td>';
+      }
+      const cls = r.removed ? 'removed' : 'no';
+      return `<td class="kind ${cls}"><span aria-hidden="true">✗</span> ${escapeHtml(r.reason)}</td>`;
+    }).join('');
+    const notes = [];
+    const nothing = TRADE_KINDS.every(t => !result[t.kind].allowed);
+    if (nothing && !lists.blocked.includes(appId)) {
+      notes.push('<span class="badge never">Nothing allowed</span>');
+    }
+    if (lists.duplicatesOnly.includes(appId) && (result.swap.allowed || result.give.allowed)) {
+      notes.push('<span class="badge protected">Gives only duplicates</span>');
+    }
+    return `<tr><th scope="row">${escapeHtml(appId)}</th>${cells}<td>${notes.join(' ')}</td></tr>`;
+  }).join('');
+}
+
+$('#configFields').addEventListener('input', (e) => {
+  if (Object.values(SET_RULE_KEYS).some(key => e.target.id === `cfg-${key}`)) {
+    renderSetRulePreview();
+  }
+});
 
 function fieldRow(f, showBadge) {
   const label = LABELS[f.key] || f.key;

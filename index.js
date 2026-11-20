@@ -62,7 +62,7 @@ function getTradeRules() {
             neverGet: config.never_get_app_ids,
             onlySwap: config.only_same_set_swap_app_ids,
             onlyGive: config.only_give_1_for_2_app_ids,
-            onlyGet: config.only_get_2_for_1_app_ids,
+            onlyGet: config.only_get_cross_set_app_ids,
             duplicatesOnly: config.give_only_duplicates_app_ids,
         }),
     };

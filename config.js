@@ -31,7 +31,7 @@ const FIELDS = [
     { key: 'never_get_app_ids', env: 'NEVER_GET_APP_IDS', legacyEnv: 'DO_NOT_GET_HARD', type: 'ids', secret: false, hotReload: true },
     { key: 'only_same_set_swap_app_ids', env: 'ONLY_SAME_SET_SWAP_APP_IDS', type: 'ids', secret: false, hotReload: true },
     { key: 'only_give_1_for_2_app_ids', env: 'ONLY_GIVE_1_FOR_2_APP_IDS', type: 'ids', secret: false, hotReload: true },
-    { key: 'only_get_2_for_1_app_ids', env: 'ONLY_GET_2_FOR_1_APP_IDS', type: 'ids', secret: false, hotReload: true },
+    { key: 'only_get_cross_set_app_ids', env: 'ONLY_GET_CROSS_SET_APP_IDS', legacyEnv: 'ONLY_GET_2_FOR_1_APP_IDS', type: 'ids', secret: false, hotReload: true },
     { key: 'give_only_duplicates_app_ids', env: 'GIVE_ONLY_DUPLICATES_APP_IDS', type: 'ids', secret: false, hotReload: true },
     { key: 'auto_decline_clear_cases', env: 'AUTO_DECLINE_CLEAR_CASES', type: 'bool', secret: false, hotReload: true, default: false },
     { key: 'ignore_messages_from', env: 'IGNORE_MESSAGES_FROM', type: 'ids', secret: false, hotReload: true },

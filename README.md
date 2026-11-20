@@ -67,7 +67,9 @@ Each card in an offer is one of 3 trade kinds:
 |---|---|
 | **Swap** | Same-set swap: same game and same type, 1:1, 2:2, … |
 | **Give** | The bot gives the card in a cross-set trade: give 1, get 2 cards of other games. |
-| **Get** | The bot gets the card in a cross-set trade: get 2, give 1 card of another game. |
+| **Get** | The bot gets the card in a cross-set trade. The other received cards can be of any game. |
+
+Cross-set trades count all cross-set cards together: for each card the bot gives, it must get at least 2 cards (normal and foil apart). Example: the bot gets 1 card of game A and 1 of game B, and gives 1 card of game C.
 
 You can put a game in more than one list. The lists combine like this:
 
@@ -79,7 +81,7 @@ You can put a game in more than one list. The lists combine like this:
 
 Examples:
 - `ONLY_SAME_SET_SWAP_APP_IDS` + `ONLY_GIVE_1_FOR_2_APP_IDS`: the bot swaps and gives these cards. Its count of them does not grow.
-- `ONLY_SAME_SET_SWAP_APP_IDS` + `GIVE_ONLY_DUPLICATES_APP_IDS`: the bot swaps only duplicates. Add `ONLY_GET_2_FOR_1_APP_IDS` to also collect these cards 2 for 1.
+- `ONLY_SAME_SET_SWAP_APP_IDS` + `GIVE_ONLY_DUPLICATES_APP_IDS`: the bot swaps only duplicates. Add `ONLY_GET_CROSS_SET_APP_IDS` to also collect these cards in cross-set trades.
 
 ## Requirements
 
@@ -137,7 +139,7 @@ All settings are in `.env`. You can also change them in the **Config** tab of th
 | `NEVER_GET_APP_IDS` | App IDs the bot never gets, also not in same-set swaps | no |
 | `ONLY_SAME_SET_SWAP_APP_IDS` | Allows same-set swaps (1:1, 2:2, …). Other kinds only by another `ONLY_*` list. | no |
 | `ONLY_GIVE_1_FOR_2_APP_IDS` | Allows to give these cards for 2 cards of other games. Other kinds only by another `ONLY_*` list. | no |
-| `ONLY_GET_2_FOR_1_APP_IDS` | Allows to get 2 of these cards for 1 card of another game. Other kinds only by another `ONLY_*` list. | no |
+| `ONLY_GET_CROSS_SET_APP_IDS` | Allows to get these cards in cross-set trades. The other received cards can be of any game. Other kinds only by another `ONLY_*` list. | no |
 | `GIVE_ONLY_DUPLICATES_APP_IDS` | The bot gives these cards only if it keeps at least 1 copy of each | no |
 | `AUTO_DECLINE_CLEAR_CASES` | `true` declines clear cases automatically (see [Trade rules](#trade-rules)). Default: `false` | no |
 | `IGNORE_MESSAGES_FROM` | SteamID64s whose chat messages are not forwarded | no |

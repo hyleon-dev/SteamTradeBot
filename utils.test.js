@@ -718,8 +718,18 @@ describe('Set rules', () => {
         });
     });
 
-    describe('only get 2 for 1', () => {
+    describe('only get cross-set', () => {
         const rules = withRules({ onlyGet: ['99'] });
+
+        test('get 1 of it + 1 of other set, give 1 of third set → accepted', () => {
+            const result = validateOffer(offer([card(1)], [card(99), card(2)]), rules);
+            expect(result.accepted).toBe(true);
+        });
+
+        test('same with only swap: get 1 of it + 1 of other set for 1 → accepted', () => {
+            const result = validateOffer(offer([card(1)], [card(99), card(2)]), withRules({ onlyGet: ['99'], onlySwap: ['99'] }));
+            expect(result.accepted).toBe(true);
+        });
 
         test('get 2, give 1 of other set → accepted', () => {
             const result = validateOffer(offer([card(1)], [card(99), card(99)]), rules);
@@ -761,7 +771,7 @@ describe('Set rules', () => {
         });
     });
 
-    describe('only swap + only duplicates + only get 2 for 1', () => {
+    describe('only swap + only duplicates + only get cross-set', () => {
         const rules = (owned) => withRules({ onlySwap: ['99'], onlyGet: ['99'], duplicatesOnly: ['99'] }, { ownedCounts: owned });
 
         test('swap a duplicate 1:1 → accepted', () => {

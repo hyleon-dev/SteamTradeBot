@@ -3,7 +3,8 @@
 // Each card in an offer is in one of 3 trade kinds:
 //   swap: same-set swap. Same game and same type (normal or foil), 1:1, 2:2, ...
 //   give: bot gives the card in a cross-set trade (gives 1, gets 2 cards of other games).
-//   get:  bot gets the card in a cross-set trade (gives 1 card of another game, gets 2).
+//   get:  bot gets the card in a cross-set trade. The other received cards can be of any game.
+// Cross-set trades count all cross-set cards together: for each card the bot gives, it gets at least 2.
 //
 // How the lists combine for one set:
 //   1. No "only" list: all 3 kinds are allowed.

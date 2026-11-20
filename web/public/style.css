@@ -1186,6 +1186,76 @@ dialog::backdrop {
   }
 }
 
+/* Set rules: numbered steps, in the order the bot applies them */
+.rule-steps {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  list-style: none;
+  counter-reset: rule-step;
+}
+
+.rule-step {
+  counter-increment: rule-step;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border: 1px solid var(--rule);
+  border-inline-start: 4px solid var(--ok);
+  border-radius: var(--radius-card);
+
+  &.remove {
+    border-inline-start-color: var(--bad);
+    background: color-mix(in srgb, var(--bad) 6%, transparent);
+  }
+
+  &.limit {
+    border-inline-start-color: var(--warn);
+  }
+
+  .hint {
+    margin-block-end: var(--space-3);
+  }
+}
+
+.rule-step-title {
+  margin-block-end: var(--space-1);
+  font-size: var(--step-0);
+
+  &::before {
+    content: counter(rule-step) ". ";
+    color: var(--graphite);
+  }
+}
+
+.field-grid.cols-3 {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+}
+
+.rule-preview {
+  caption {
+    padding-block-end: var(--space-2);
+    text-align: start;
+    font-family: var(--font-display);
+    font-weight: 600;
+  }
+
+  .kind {
+    white-space: nowrap;
+  }
+
+  .yes {
+    color: var(--ok);
+  }
+
+  .no {
+    color: var(--graphite);
+  }
+
+  .removed {
+    color: var(--bad);
+  }
+}
+
 .field-hint {
   max-inline-size: 72ch;
   color: var(--graphite);
