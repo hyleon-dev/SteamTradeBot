@@ -70,29 +70,23 @@ function formatCards(items) {
     return Array.from(counts, ([label, count]) => (count > 1 ? `${count}× ${label}` : label)).join(', ');
 }
 
-// Splits items into allowed and blocked items. Groups allowed items by app + border.
-function buildItemMap(items, blacklist) {
+// Groups items by app + border.
+function groupByKey(items) {
     const map = new Map();
-    const blocked = [];
     items.forEach(item => {
-        if (blacklist.includes(item.appId)) {
-            blocked.push(item);
-            return;
-        }
         const key = item.appId + "_" + item.border;
         if (map.has(key)) map.get(key).push(item);
         else map.set(key, [item]);
     });
-    return { map, blocked };
+    return map;
 }
 
-function filterSoftBlacklist(itemsMap, blacklist) {
-    const items = [];
+// Splits items into [allowed, blocked].
+function splitBy(items, isAllowed) {
+    const allowed = [];
     const blocked = [];
-    itemsMap.forEach(mapItems => {
-        mapItems.forEach(item => (blacklist.includes(item.appId) ? blocked : items).push(item));
-    });
-    return { items, blocked };
+    items.forEach(item => (isAllowed(item) ? allowed : blocked).push(item));
+    return [allowed, blocked];
 }
 
 // Counts items per market_hash_name. Normal and foil have different names.
@@ -102,11 +96,11 @@ function countByName(items) {
     return counts;
 }
 
-// Soft-give games: the bot gives only duplicates. After the trade it must keep at least 1 copy of each card.
+// Duplicates-only games: after the trade the bot must keep at least 1 copy of each given card.
 // ownedCounts: Map market_hash_name -> count in bot inventory. null = inventory not loaded.
 // Returns the names of cards the bot would lose. null = check not possible.
-function findLastCopies(offer, softGiveIds, ownedCounts) {
-    const give = offer.itemsToGive.filter(item => softGiveIds.includes(item.appId));
+function findLastCopies(offer, duplicatesOnlyIds, ownedCounts) {
+    const give = offer.itemsToGive.filter(item => duplicatesOnlyIds.includes(item.appId));
     if (give.length === 0) return [];
     if (!ownedCounts) return null;
     const giveCounts = countByName(give);
@@ -120,11 +114,13 @@ function findLastCopies(offer, softGiveIds, ownedCounts) {
 }
 
 // Checks all rules. Does not stop at the first problem.
+// setRules: from setRules.buildSetRules.
 // reasons: [{ code, text, clear }]. clear = bot can decline without a manual check.
-function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppIdGet, saleMarketFeeAppIdGive, ownedCounts = null }) {
+function validateOffer(offer, { setRules, saleMarketFeeAppIdGet, saleMarketFeeAppIdGive, ownedCounts = null }) {
     const reasons = [];
     const discordLines = [];
     const addReason = (code, text, clear = false) => reasons.push({ code, text: `🔴 ${text}`, clear });
+    const duplicatesOnly = setRules.duplicatesOnly;
 
     // Items that are not trading cards. They are reported and not checked further.
     const nonCardsGive = offer.itemsToGive.filter(item => !item.isTradingCard);
@@ -139,11 +135,11 @@ function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppId
     let itemsToGive = offer.itemsToGive.filter(item => item.isTradingCard);
     let itemsToReceive = offer.itemsToReceive.filter(item => item.isTradingCard);
 
-    // Soft-give games: only duplicates may leave the inventory
-    const softGiveCards = itemsToGive.filter(item => softBlacklist.give.includes(item.appId));
-    const lastCopies = findLastCopies({ itemsToGive, itemsToReceive }, softBlacklist.give, ownedCounts);
+    // Duplicates-only games: only duplicates may leave the inventory
+    const protectedCards = itemsToGive.filter(item => duplicatesOnly.includes(item.appId));
+    const lastCopies = findLastCopies({ itemsToGive, itemsToReceive }, duplicatesOnly, ownedCounts);
     if (lastCopies === null) {
-        addReason('inventory_missing', `Bot inventory could not be loaded. Cannot check if these protected cards are duplicates: ${formatCards(softGiveCards)}`);
+        addReason('inventory_missing', `Bot inventory could not be loaded. Cannot check if these protected cards are duplicates: ${formatCards(protectedCards)}`);
     } else if (lastCopies.length > 0) {
         // Last copy is a clear case only in an N:N offer where each given card is blocked.
         // A card is blocked if the bot may give 0 copies of it (has at most 1, received copies included).
@@ -151,60 +147,65 @@ function validateOffer(offer, { hardBlacklist, softBlacklist, saleMarketFeeAppId
         const receivedByName = countByName(itemsToReceive);
         const isEvenSwap = nonCardsGive.length === 0 && nonCardsReceive.length === 0
             && itemsToGive.length > 0 && itemsToGive.length === itemsToReceive.length;
-        const allGivenBlocked = itemsToGive.every(item => softBlacklist.give.includes(item.appId)
+        const allGivenBlocked = itemsToGive.every(item => duplicatesOnly.includes(item.appId)
             && (ownedCounts.get(item.market_hash_name) || 0) + (receivedByName.get(item.market_hash_name) || 0) <= 1);
-        const givenByName = countByName(softGiveCards);
+        const givenByName = countByName(protectedCards);
         const details = lastCopies.map(name => {
-            const item = softGiveCards.find(i => i.market_hash_name === name);
+            const item = protectedCards.find(i => i.market_hash_name === name);
             const back = receivedByName.get(name) ? `, gets back ${receivedByName.get(name)}` : '';
             return `${cardLabel(item)}: has ${ownedCounts.get(name) || 0}, gives ${givenByName.get(name)}${back}`;
         });
         addReason('last_copy', `Bot would give its last copy of protected cards: ${details.join('; ')}`, isEvenSwap && allGivenBlocked);
     }
 
-    // Hard blacklist
-    const { map: itemsToGiveMap, blocked: neverGive } = buildItemMap(itemsToGive, hardBlacklist.give);
-    const { map: itemsToReceiveMap, blocked: neverGet } = buildItemMap(itemsToReceive, hardBlacklist.get);
+    // Cards the bot may not give or get in any trade kind. They are not checked further.
+    let neverGive;
+    let neverGet;
+    [itemsToGive, neverGive] = splitBy(itemsToGive, item => {
+        const a = setRules.allowed(item.appId);
+        return a.swap || a.give;
+    });
+    [itemsToReceive, neverGet] = splitBy(itemsToReceive, item => {
+        const a = setRules.allowed(item.appId);
+        return a.swap || a.get;
+    });
     if (neverGive.length > 0) {
-        addReason('never_give', `Bot would give cards of games it never gives (NEVER_GIVE): ${formatCards(neverGive)}`, true);
+        addReason('never_give', `Bot would give cards of games it never gives: ${formatCards(neverGive)}`, true);
     }
     if (neverGet.length > 0) {
-        addReason('never_get', `Bot would get cards of games it never takes (NEVER_GET): ${formatCards(neverGet)}`);
+        addReason('never_get', `Bot would get cards of games it never takes: ${formatCards(neverGet)}`);
     }
 
     discordLines.push('↔️ Following trades will be made:');
 
-    // Filter out 1:1 trades (same app, same border, same count)
-    itemsToGiveMap.forEach((items, key) => {
-        if (itemsToReceiveMap.has(key) && items.length === itemsToReceiveMap.get(key).length) {
-            for (let i = 0; i < items.length; i++) {
-                discordLines.push(`➡️ ${itemsToReceiveMap.get(key)[i].name} (${trimItemType(items[i].type)}) \n⬅️ ${items[i].name} (${trimItemType(items[i].type)}) \n`);
-            }
-            itemsToReceiveMap.delete(key);
-            itemsToGiveMap.delete(key);
-        } else if (itemsToReceiveMap.has(key) && items.length < itemsToReceiveMap.get(key).length) {
-            const poppedItems = [];
-            for (let i = 1; i <= items.length; i++) {
-                const poppedItem = itemsToReceiveMap.get(key).pop();
-                if (poppedItem !== undefined) poppedItems.push(poppedItem);
-            }
-            for (let i = 0; i < poppedItems.length; i++) {
-                discordLines.push(`➡️ ${poppedItems[i].name} (${trimItemType(poppedItems[i].type)}) \n⬅️ ${itemsToGiveMap.get(key)[i].name} (${trimItemType(itemsToGiveMap.get(key)[i].type)}) \n`);
-            }
-            itemsToGiveMap.delete(key);
+    // Same-set swaps (same app, same border). Only for sets that allow them.
+    // Each side keeps the cards left over.
+    const itemsToGiveMap = groupByKey(itemsToGive);
+    const itemsToReceiveMap = groupByKey(itemsToReceive);
+    itemsToGiveMap.forEach((give, key) => {
+        const receive = itemsToReceiveMap.get(key);
+        if (!receive || !setRules.allowed(give[0].appId).swap) return;
+        const count = Math.min(give.length, receive.length);
+        const swappedGive = give.splice(0, count);
+        const swappedReceive = receive.splice(0, count);
+        for (let i = 0; i < count; i++) {
+            discordLines.push(`➡️ ${swappedReceive[i].name} (${trimItemType(swappedReceive[i].type)}) 
+⬅️ ${swappedGive[i].name} (${trimItemType(swappedGive[i].type)}) 
+`);
         }
     });
 
-    // Soft blacklist: cards left after the 1:1 swaps are not allowed
-    const { items: filteredGive, blocked: softGiveLeft } = filterSoftBlacklist(itemsToGiveMap, softBlacklist.give);
-    const { items: filteredReceive, blocked: softGetLeft } = filterSoftBlacklist(itemsToReceiveMap, softBlacklist.get);
-    itemsToGive = filteredGive;
-    itemsToReceive = filteredReceive;
-    if (softGiveLeft.length > 0) {
-        addReason('same_set_give', `Bot gives these protected cards only 1:1 for cards of the same set and type, but not here: ${formatCards(softGiveLeft)}`);
+    // Cards left after the swaps are cross-set cards. Their set must allow this.
+    // A blocked card here always has a set that allows swaps (else it was removed above).
+    let sameSetGiveLeft;
+    let sameSetGetLeft;
+    [itemsToGive, sameSetGiveLeft] = splitBy([...itemsToGiveMap.values()].flat(), item => setRules.allowed(item.appId).give);
+    [itemsToReceive, sameSetGetLeft] = splitBy([...itemsToReceiveMap.values()].flat(), item => setRules.allowed(item.appId).get);
+    if (sameSetGiveLeft.length > 0) {
+        addReason('same_set_give', `Bot gives these cards only in same-set swaps, but not here: ${formatCards(sameSetGiveLeft)}`);
     }
-    if (softGetLeft.length > 0) {
-        addReason('same_set_get', `Bot takes these cards only 1:1 for cards of the same set and type, but not here: ${formatCards(softGetLeft)}`);
+    if (sameSetGetLeft.length > 0) {
+        addReason('same_set_get', `Bot gets these cards only in same-set swaps, but not here: ${formatCards(sameSetGetLeft)}`);
     }
 
     // Sale card logic

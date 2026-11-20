@@ -10,6 +10,8 @@ const TEXT_PATTERNS = [
     [/^🔴 Bot would give its last copy/, 'last_copy'],
     [/^🔴 Bot would give cards of games it never gives/, 'never_give'],
     [/^🔴 Bot would get cards of games it never takes/, 'never_get'],
+    [/^🔴 Bot gives these cards only in same-set swaps/, 'same_set_give'],
+    [/^🔴 Bot gets these cards only in same-set swaps/, 'same_set_get'],
     [/^🔴 Bot gives these protected cards only 1:1/, 'same_set_give'],
     [/^🔴 Bot takes these cards only 1:1/, 'same_set_get'],
     [/^🔴 Bot gives sale cards only for 3/, 'sale_give'],

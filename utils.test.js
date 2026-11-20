@@ -1,12 +1,20 @@
 const { TradeItem, TradeOffer, validateOffer, mapSteamItem, mapSteamOffer } = require('./utils');
+const { buildSetRules } = require('./setRules');
 
-// Default config without blacklists and without sale cards
+// Default config without set rules and without sale cards
 const DEFAULT_CONFIG = {
-    hardBlacklist: { get: [], give: [] },
-    softBlacklist: { get: [], give: [] },
+    setRules: buildSetRules(),
     saleMarketFeeAppIdGet: null,
     saleMarketFeeAppIdGive: []
 };
+
+// Config with set rules. lists: see buildSetRules.
+function withRules(lists, extra = {}) {
+    return { ...DEFAULT_CONFIG, setRules: buildSetRules(lists), ...extra };
+}
+
+// Old "give only same-set duplicates" rule: only swaps, only duplicates
+const DUPES_SWAP_99 = { onlySwap: ['99'], duplicatesOnly: ['99'] };
 
 // Creates a normal trading card as TradeItem
 function card(appId, border = 'cardborder_0', name = 'Test Card') {
@@ -97,6 +105,15 @@ describe('1:1 Same-Game-Trades', () => {
         expect(result.accepted).toBe(true);
     });
 
+    test('give 2, receive 1 of same game + 2 of other game → accepted', () => {
+        // 1:1 swap of game 1, then the second card of game 1 for 2 cards of game 2
+        const result = validateOffer(
+            offer([card(1), card(1)], [card(1), card(2), card(2)]),
+            DEFAULT_CONFIG
+        );
+        expect(result.accepted).toBe(true);
+    });
+
     test('1:1 same game + 1:2 cross-set → accepted', () => {
         // Game 1 is filtered out as 1:1. Game 2 (give) for game 3 (receive) stays as 1:2
         const result = validateOffer(
@@ -131,7 +148,7 @@ describe('Non-Trading-Card-Items', () => {
 
 describe('Hard-Blacklist', () => {
     test('hard blacklisted game in receive → declined', () => {
-        const config = { ...DEFAULT_CONFIG, hardBlacklist: { get: ['99'], give: [] } };
+        const config = withRules({ neverGet: ['99'] });
         const result = validateOffer(
             offer([card(1), card(1)], [card(99), card(99), card(99), card(99)]),
             config
@@ -141,7 +158,7 @@ describe('Hard-Blacklist', () => {
     });
 
     test('hard blacklisted game in give → declined', () => {
-        const config = { ...DEFAULT_CONFIG, hardBlacklist: { get: [], give: ['99'] } };
+        const config = withRules({ neverGive: ['99'] });
         const result = validateOffer(
             offer([card(99), card(99)], [card(2), card(2), card(2), card(2)]),
             config
@@ -150,13 +167,51 @@ describe('Hard-Blacklist', () => {
         expect(codes(result)).toContain('never_give');
     });
 
+    const neverGet = withRules({ neverGet: ['99'] });
+
+    test('NEVER_GET game 1:1 same set → declined', () => {
+        const result = validateOffer(offer([card(99, 'cardborder_0', 'A')], [card(99, 'cardborder_0', 'B')]), neverGet);
+        expect(result.accepted).toBe(false);
+        expect(codes(result)).toContain('never_get');
+    });
+
+    test('NEVER_GET game 3:3 same set → declined', () => {
+        const result = validateOffer(offer([card(99), card(99), card(99)], [card(99), card(99), card(99)]), neverGet);
+        expect(result.accepted).toBe(false);
+        expect(codes(result)).toContain('never_get');
+    });
+
+    test('NEVER_GET game: give 1, receive 2 of other set → accepted', () => {
+        const result = validateOffer(offer([card(99)], [card(2), card(2)]), neverGet);
+        expect(result.accepted).toBe(true);
+    });
+
+    test('NEVER_GET game: give 2, receive 4 of other set → accepted', () => {
+        const result = validateOffer(offer([card(99), card(99)], [card(2), card(2), card(2), card(2)]), neverGet);
+        expect(result.accepted).toBe(true);
+    });
+
+    test('NEVER_GET game mixed: give 2 of it + 1 other, receive 6 of other sets → accepted', () => {
+        const result = validateOffer(
+            offer([card(99, 'cardborder_0', 'A'), card(99, 'cardborder_0', 'B'), card(1)], [card(2), card(2), card(2), card(2), card(3), card(3)]),
+            neverGet
+        );
+        expect(result.accepted).toBe(true);
+    });
+
+    test('NEVER_GET game mixed: cross-set give + 1 received card of it → declined', () => {
+        const result = validateOffer(offer([card(99), card(1)], [card(99), card(2), card(2)]), neverGet);
+        expect(result.accepted).toBe(false);
+        expect(codes(result)).toContain('never_get');
+    });
+
     test('hard blacklisted game → reason names the cards', () => {
-        const config = { ...DEFAULT_CONFIG, hardBlacklist: { get: ['99'], give: [] } };
+        const config = withRules({ neverGet: ['99'] });
         const result = validateOffer(
             offer([card(1), card(1)], [card(99), card(99), card(99), card(99)]),
             config
         );
-        expect(result.errorLines.some(l => l.includes('NEVER_GET') && l.includes('4× Test Card (Game99)'))).toBe(true);
+        expect(result.errorLines.some(l => l.includes('never takes') && l.includes('4× Test Card (Game99)'))).toBe(true);
     });
 });
 
@@ -164,7 +219,7 @@ describe('Hard-Blacklist', () => {
 
 describe('Soft-Blacklist', () => {
     test('soft blacklisted game in cross-set receive → declined', () => {
-        const config = { ...DEFAULT_CONFIG, softBlacklist: { get: ['99'], give: [] } };
+        const config = withRules({ onlySwap: ['99'], onlyGive: ['99'] });
         const result = validateOffer(
             offer([card(1), card(1)], [card(99), card(99), card(99), card(99)]),
             config
@@ -174,7 +229,7 @@ describe('Soft-Blacklist', () => {
     });
 
     test('soft blacklisted game in 1:1 trade → accepted (1:1 is filtered out first)', () => {
-        const config = { ...DEFAULT_CONFIG, softBlacklist: { get: ['99'], give: ['99'] }, ownedCounts: new Map([['99-Test Card', 3]]) };
+        const config = withRules(DUPES_SWAP_99, { ownedCounts: new Map([['99-Test Card', 3]]) });
         const result = validateOffer(
             offer([card(99), card(99)], [card(99), card(99)]),
             config
@@ -183,7 +238,7 @@ describe('Soft-Blacklist', () => {
     });
 
     test('soft blacklisted game in give → declined', () => {
-        const config = { ...DEFAULT_CONFIG, softBlacklist: { get: [], give: ['99'] } };
+        const config = withRules(DUPES_SWAP_99);
         const result = validateOffer(
             offer([card(99), card(99)], [card(2), card(2), card(2), card(2)]),
             config
@@ -195,7 +250,7 @@ describe('Soft-Blacklist', () => {
 // ─── Soft-Give: duplicates only ──────────────────────────────────────────────
 
 describe('Soft-Give: duplicates only', () => {
-    const soft = (owned) => ({ ...DEFAULT_CONFIG, softBlacklist: { get: [], give: ['99'] }, ownedCounts: owned });
+    const soft = (owned) => withRules(DUPES_SWAP_99, { ownedCounts: owned });
 
     test('give duplicate 1:1 → accepted', () => {
         const result = validateOffer(
@@ -265,7 +320,7 @@ describe('Soft-Give: duplicates only', () => {
 // ─── Auto decline: clear cases vs. manual check ──────────────────────────────
 
 describe('Auto decline', () => {
-    const soft = (owned) => ({ ...DEFAULT_CONFIG, softBlacklist: { get: [], give: ['99'] }, ownedCounts: owned });
+    const soft = (owned) => withRules(DUPES_SWAP_99, { ownedCounts: owned });
 
     test('bot gives non-card item → clear case', () => {
         const result = validateOffer(offer([nonCard(1)], [card(2), card(2)]), DEFAULT_CONFIG);
@@ -279,13 +334,13 @@ describe('Auto decline', () => {
     });
 
     test('bot gives NEVER_GIVE card → clear case', () => {
-        const config = { ...DEFAULT_CONFIG, hardBlacklist: { get: [], give: ['99'] } };
+        const config = withRules({ neverGive: ['99'] });
         const result = validateOffer(offer([card(99)], [card(2), card(2)]), config);
         expect(result.autoDecline).toBe(true);
     });
 
     test('bot gets NEVER_GET card → manual check', () => {
-        const config = { ...DEFAULT_CONFIG, hardBlacklist: { get: ['99'], give: [] } };
+        const config = withRules({ neverGet: ['99'] });
         const result = validateOffer(offer([card(1)], [card(99), card(99)]), config);
         expect(result.accepted).toBe(false);
         expect(result.autoDecline).toBe(false);
@@ -311,7 +366,7 @@ describe('Auto decline', () => {
     });
 
     test('3:3, all given cards are last copies, different sets → clear case', () => {
-        const config = { ...DEFAULT_CONFIG, softBlacklist: { get: [], give: ['98', '99'] }, ownedCounts: new Map([['99-A', 1], ['98-B', 1]]) };
+        const config = withRules({ onlySwap: ['98', '99'], duplicatesOnly: ['98', '99'] }, { ownedCounts: new Map([['99-A', 1], ['98-B', 1]]) });
         const result = validateOffer(
             offer(
                 [card(99, 'cardborder_0', 'A'), card(98, 'cardborder_0', 'B'), card(98, 'cardborder_0', 'B')],
@@ -561,7 +616,7 @@ describe('mapSteamOffer', () => {
 
 describe('All decline reasons', () => {
     test('checks go on after a non-card item and list all reasons', () => {
-        const config = { ...DEFAULT_CONFIG, hardBlacklist: { get: [], give: ['99'] } };
+        const config = withRules({ neverGive: ['99'] });
         const result = validateOffer(
             offer([nonCard(5), card(99, 'cardborder_0', 'Locked'), card(1, 'cardborder_0', 'X')], [card(2)]),
             config
@@ -598,5 +653,141 @@ describe('All decline reasons', () => {
         const result = validateOffer(offer([card(1)], [card(2), card(2)]), DEFAULT_CONFIG);
         expect(result.reasons).toEqual([]);
         expect(result.errorLines).toEqual([]);
+    });
+});
+
+// ─── Set rules: combinations ─────────────────────────────────────────────────
+
+describe('Set rules', () => {
+    test('blocked set: 1:1 swap → declined', () => {
+        const result = validateOffer(offer([card(99)], [card(99)]), withRules({ blocked: ['99'] }));
+        expect(codes(result)).toEqual(['never_give', 'never_get']);
+        expect(result.autoDecline).toBe(true);
+    });
+
+    test('blocked set: give 1, get 2 of other set → declined', () => {
+        const result = validateOffer(offer([card(99)], [card(2), card(2)]), withRules({ blocked: ['99'] }));
+        expect(codes(result)).toContain('never_give');
+    });
+
+    test('blocked set: get 2, give 1 of other set → declined', () => {
+        const result = validateOffer(offer([card(1)], [card(99), card(99)]), withRules({ blocked: ['99'] }));
+        expect(codes(result)).toContain('never_get');
+    });
+
+    test('never give: get 2 for 1 of other set → accepted', () => {
+        const result = validateOffer(offer([card(1)], [card(99), card(99)]), withRules({ neverGive: ['99'] }));
+        expect(result.accepted).toBe(true);
+    });
+
+    test('never give: 1:1 swap → declined', () => {
+        const result = validateOffer(offer([card(99)], [card(99)]), withRules({ neverGive: ['99'] }));
+        expect(codes(result)).toContain('never_give');
+    });
+
+    describe('only same-set swap', () => {
+        const rules = withRules({ onlySwap: ['99'] });
+
+        test('2:2 → accepted', () => {
+            const result = validateOffer(offer([card(99), card(99)], [card(99), card(99)]), rules);
+            expect(result.accepted).toBe(true);
+        });
+
+        test('give 1, get 2 of other set → declined', () => {
+            const result = validateOffer(offer([card(99)], [card(2), card(2)]), rules);
+            expect(codes(result)).toEqual(['same_set_give']);
+        });
+
+        test('get 2, give 1 of other set → declined', () => {
+            const result = validateOffer(offer([card(1)], [card(99), card(99)]), rules);
+            expect(codes(result)).toContain('same_set_get');
+        });
+    });
+
+    describe('only give 1 for 2', () => {
+        const rules = withRules({ onlyGive: ['99'] });
+
+        test('give 1, get 2 of other set → accepted', () => {
+            const result = validateOffer(offer([card(99)], [card(2), card(2)]), rules);
+            expect(result.accepted).toBe(true);
+        });
+
+        test('1:1 swap → declined', () => {
+            const result = validateOffer(offer([card(99)], [card(99)]), rules);
+            expect(codes(result)).toContain('never_get');
+        });
+    });
+
+    describe('only get 2 for 1', () => {
+        const rules = withRules({ onlyGet: ['99'] });
+
+        test('get 2, give 1 of other set → accepted', () => {
+            const result = validateOffer(offer([card(1)], [card(99), card(99)]), rules);
+            expect(result.accepted).toBe(true);
+        });
+
+        test('give 1, get 2 of other set → declined', () => {
+            const result = validateOffer(offer([card(99)], [card(2), card(2)]), rules);
+            expect(codes(result)).toContain('never_give');
+        });
+    });
+
+    describe('only swap + only give 1 for 2 (count of the set does not grow)', () => {
+        const rules = withRules({ onlySwap: ['99'], onlyGive: ['99'] });
+
+        test('1:1 swap → accepted', () => {
+            const result = validateOffer(offer([card(99)], [card(99)]), rules);
+            expect(result.accepted).toBe(true);
+        });
+
+        test('give 2, get 4 of other set → accepted', () => {
+            const result = validateOffer(offer([card(99), card(99)], [card(2), card(2), card(2), card(2)]), rules);
+            expect(result.accepted).toBe(true);
+        });
+
+        test('mixed: 1:1 swap + give 1 for 2 → accepted', () => {
+            const result = validateOffer(offer([card(99), card(99)], [card(99), card(2), card(2)]), rules);
+            expect(result.accepted).toBe(true);
+        });
+
+        test('get 2, give 1 of other set → declined', () => {
+            const result = validateOffer(offer([card(1)], [card(99), card(99)]), rules);
+            expect(codes(result)).toContain('same_set_get');
+        });
+
+        test('give 1, get 2 of same set → declined', () => {
+            const result = validateOffer(offer([card(99)], [card(99), card(99)]), rules);
+            expect(codes(result)).toContain('same_set_get');
+        });
+    });
+
+    describe('only swap + only duplicates + only get 2 for 1', () => {
+        const rules = (owned) => withRules({ onlySwap: ['99'], onlyGet: ['99'], duplicatesOnly: ['99'] }, { ownedCounts: owned });
+
+        test('swap a duplicate 1:1 → accepted', () => {
+            const result = validateOffer(offer([card(99, 'cardborder_0', 'A')], [card(99, 'cardborder_0', 'B')]), rules(new Map([['99-A', 2]])));
+            expect(result.accepted).toBe(true);
+        });
+
+        test('get 2, give 1 of other set → accepted', () => {
+            const result = validateOffer(offer([card(1)], [card(99), card(99)]), rules(new Map()));
+            expect(result.accepted).toBe(true);
+        });
+
+        test('give a duplicate for 2 of other set → declined', () => {
+            const result = validateOffer(offer([card(99, 'cardborder_0', 'A')], [card(2), card(2)]), rules(new Map([['99-A', 3]])));
+            expect(codes(result)).toContain('same_set_give');
+        });
+    });
+
+    test('only give 1 for 2 + duplicates: last copy → declined', () => {
+        const config = withRules({ onlyGive: ['99'], duplicatesOnly: ['99'] }, { ownedCounts: new Map([['99-A', 1]]) });
+        const result = validateOffer(offer([card(99, 'cardborder_0', 'A')], [card(2), card(2)]), config);
+        expect(codes(result)).toEqual(['last_copy']);
+    });
+
+    test('neverGiveIds lists sets the bot cannot give at all', () => {
+        const rules = buildSetRules({ blocked: ['1'], neverGive: ['2'], onlyGet: ['3'], onlySwap: ['4'], duplicatesOnly: ['5'] });
+        expect(rules.neverGiveIds().sort()).toEqual(['1', '2', '3']);
     });
 });

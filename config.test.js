@@ -7,7 +7,8 @@ fs.writeFileSync(TMP_ENV, [
     '# comment line',
     'STEAM_USERNAME=bob',
     'NEVER_GET_APP_IDS=1,2',
-    'DO_NOT_GIVE_SOFT=7',
+    'DO_NOT_GIVE_HARD=7',
+    'GET_ONLY_SAME_SET_APP_IDS=5',
     'PORT=3000',
 ].join('\n'));
 process.env.CONFIG_ENV_PATH = TMP_ENV;
@@ -27,7 +28,12 @@ describe('config load', () => {
     });
 
     test('old variable name is read as fallback', () => {
-        expect(config.give_only_same_set_duplicates_app_ids).toEqual(['7']);
+        expect(config.never_give_app_ids).toEqual(['7']);
+    });
+
+    test('removed variable is ignored', () => {
+        expect(config.get_only_same_set_app_ids).toBeUndefined();
+        expect(config.only_same_set_swap_app_ids).toEqual([]);
     });
 });
 

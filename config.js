@@ -25,10 +25,14 @@ const FIELDS = [
     // legacyEnv: old variable name. Read only if the new name is not set.
     { key: 'sale_cards_give_1_for_3_app_ids', env: 'SALE_CARDS_GIVE_1_FOR_3_APP_IDS', legacyEnv: 'SALE_MARKET_FEE_APP_ID_GIVE', type: 'ids', secret: false, hotReload: true },
     { key: 'sale_card_get_1_for_2_app_id', env: 'SALE_CARD_GET_1_FOR_2_APP_ID', legacyEnv: 'SALE_MARKET_FEE_APP_ID_GET', type: 'idOrNull', secret: false, hotReload: true },
+    // Set rules. They can be combined, see setRules.js.
+    { key: 'blocked_app_ids', env: 'BLOCKED_APP_IDS', type: 'ids', secret: false, hotReload: true },
     { key: 'never_give_app_ids', env: 'NEVER_GIVE_APP_IDS', legacyEnv: 'DO_NOT_GIVE_HARD', type: 'ids', secret: false, hotReload: true },
     { key: 'never_get_app_ids', env: 'NEVER_GET_APP_IDS', legacyEnv: 'DO_NOT_GET_HARD', type: 'ids', secret: false, hotReload: true },
-    { key: 'give_only_same_set_duplicates_app_ids', env: 'GIVE_ONLY_SAME_SET_DUPLICATES_APP_IDS', legacyEnv: 'DO_NOT_GIVE_SOFT', type: 'ids', secret: false, hotReload: true },
-    { key: 'get_only_same_set_app_ids', env: 'GET_ONLY_SAME_SET_APP_IDS', legacyEnv: 'DO_NOT_GET_SOFT', type: 'ids', secret: false, hotReload: true },
+    { key: 'only_same_set_swap_app_ids', env: 'ONLY_SAME_SET_SWAP_APP_IDS', type: 'ids', secret: false, hotReload: true },
+    { key: 'only_give_1_for_2_app_ids', env: 'ONLY_GIVE_1_FOR_2_APP_IDS', type: 'ids', secret: false, hotReload: true },
+    { key: 'only_get_2_for_1_app_ids', env: 'ONLY_GET_2_FOR_1_APP_IDS', type: 'ids', secret: false, hotReload: true },
+    { key: 'give_only_duplicates_app_ids', env: 'GIVE_ONLY_DUPLICATES_APP_IDS', type: 'ids', secret: false, hotReload: true },
     { key: 'auto_decline_clear_cases', env: 'AUTO_DECLINE_CLEAR_CASES', type: 'bool', secret: false, hotReload: true, default: false },
     { key: 'ignore_messages_from', env: 'IGNORE_MESSAGES_FROM', type: 'ids', secret: false, hotReload: true },
     // Web UI
@@ -38,6 +42,9 @@ const FIELDS = [
 ];
 
 const FIELD_BY_KEY = new Map(FIELDS.map(f => [f.key, f]));
+
+// Removed variables. The bot ignores them and warns one time.
+const REMOVED_ENV = ['GIVE_ONLY_SAME_SET_DUPLICATES_APP_IDS', 'GET_ONLY_SAME_SET_APP_IDS', 'DO_NOT_GIVE_SOFT', 'DO_NOT_GET_SOFT'];
 
 function parseValue(field, raw) {
     switch (field.type) {
@@ -79,6 +86,12 @@ function refresh() {
     for (const field of FIELDS) {
         config[field.key] = parseValue(field, readEnv(field));
     }
+    REMOVED_ENV.forEach(name => {
+        if (process.env[name] && !warnedLegacy.has(name)) {
+            warnedLegacy.add(name);
+            console.warn(`Config: ${name} was removed and is ignored. Use the new set rules (see README).`);
+        }
+    });
 }
 
 // Keep the .env file (comments, other keys). Replace only the changed lines.

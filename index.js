@@ -14,6 +14,7 @@ const events = require('./events');
 const { mapSteamOffer, validateOffer, itemsToText } = require('./utils');
 const { createLock, CardReservations } = require('./reservations');
 const { groupCardsBySet, parseSetSize } = require('./inventory');
+const { buildSetRules } = require('./setRules');
 const bot = require('./bot');
 
 const steamClient = new SteamUser();
@@ -55,8 +56,15 @@ function getTradeRules() {
     return {
         saleMarketFeeAppIdGive: config.sale_cards_give_1_for_3_app_ids.map(String),
         saleMarketFeeAppIdGet: config.sale_card_get_1_for_2_app_id,
-        hardBlacklist: { get: config.never_get_app_ids.map(String), give: config.never_give_app_ids.map(String) },
-        softBlacklist: { get: config.get_only_same_set_app_ids.map(String), give: config.give_only_same_set_duplicates_app_ids.map(String) },
+        setRules: buildSetRules({
+            blocked: config.blocked_app_ids,
+            neverGive: config.never_give_app_ids,
+            neverGet: config.never_get_app_ids,
+            onlySwap: config.only_same_set_swap_app_ids,
+            onlyGive: config.only_give_1_for_2_app_ids,
+            onlyGet: config.only_get_2_for_1_app_ids,
+            duplicatesOnly: config.give_only_duplicates_app_ids,
+        }),
     };
 }
 
@@ -221,6 +229,20 @@ steamClient.chat.on('friendMessage', (msg) => {
     });
 });
 
+// The sender gets the main account hint at most once per cooldown. Forwarding is not affected.
+const MAIN_ACCOUNT_HINT_COOLDOWN_MS = 5 * 60 * 1000;
+const lastMainAccountHint = new Map(); // steamID64 -> time of last hint (ms)
+
+function shouldSendMainAccountHint(steamID64, now = Date.now()) {
+    // Remove old entries. The map stays small.
+    lastMainAccountHint.forEach((time, id) => {
+        if (now - time >= MAIN_ACCOUNT_HINT_COOLDOWN_MS) lastMainAccountHint.delete(id);
+    });
+    if (lastMainAccountHint.has(steamID64)) return false;
+    lastMainAccountHint.set(steamID64, now);
+    return true;
+}
+
 async function handleFriendMessage(msg) {
 
     const userLinkPart1 = `https://steamcommunity.com/profiles/`
@@ -247,7 +269,12 @@ async function handleFriendMessage(msg) {
         message_text: msg.message
     });
 
-    await steamClient.chat.sendFriendMessage(msg.steamid_friend, `Please use main account for communication: ${userLinkPart1}${config.steam_main_account}`);
+    // Check and set the cooldown in one step. No await between them, so two fast messages cannot both pass.
+    if (shouldSendMainAccountHint(steamID64)) {
+        await steamClient.chat.sendFriendMessage(msg.steamid_friend, `Please use main account for communication: ${userLinkPart1}${config.steam_main_account}`);
+    } else {
+        logger.debug(`Main account hint to ${steamID64} skipped (cooldown)`);
+    }
     await steamClient.chat.sendFriendMessage(config.steam_main_account, `Message from ${user.personaname}: '${msg.message}' \n ${userLinkPart1}${steamID64}`);
 }
 
@@ -279,7 +306,7 @@ async function handleNewOffer(steamOffer) {
     logger.debug(`ItemsToGive: (${offer.itemsToGive.length}) ${itemsToText(offer.itemsToGive)}`);
 
     const rules = getTradeRules();
-    const softGiveItems = offer.itemsToGive.filter(item => rules.softBlacklist.give.includes(item.appId));
+    const softGiveItems = offer.itemsToGive.filter(item => rules.setRules.duplicatesOnly.includes(item.appId));
     const escrow = await loadEscrowDays(steamOffer);
 
     let result;
@@ -479,7 +506,7 @@ function getOpenOffers() {
 // Protected cards are reserved, so parallel offers count them as gone.
 async function manualAcceptOffer(id) {
     const steamOffer = await getActiveReceivedOffer(id);
-    const softGiveIds = getTradeRules().softBlacklist.give;
+    const softGiveIds = getTradeRules().setRules.duplicatesOnly;
     const softGiveItems = mapSteamOffer(steamOffer).itemsToGive.filter(item => softGiveIds.includes(item.appId));
     if (softGiveItems.length > 0) {
         await runExclusive(async () => reservations.reserve(steamOffer.id, softGiveItems));
@@ -509,7 +536,7 @@ async function getInventorySets({ refresh = false } = {}) {
         inventoryCache = { items: await loadCardInventory(), loadedAt: Date.now(), expiresAt: Date.now() + INVENTORY_CACHE_MS };
     }
     const rules = getTradeRules();
-    const sets = groupCardsBySet(inventoryCache.items, { neverGive: rules.hardBlacklist.give, duplicatesOnly: rules.softBlacklist.give });
+    const sets = groupCardsBySet(inventoryCache.items, { neverGive: rules.setRules.neverGiveIds(), duplicatesOnly: rules.setRules.duplicatesOnly });
     const sizes = getSetSizes([...new Set(sets.map(s => s.appId))]);
     sets.forEach(set => { set.setSize = sizes.get(set.appId) ?? null; });
     return { loadedAt: inventoryCache.loadedAt, sets };

@@ -157,13 +157,13 @@ const REASON_LABELS = {
   non_card_give: 'Bot would give an item that is not a card',
   non_card_get: 'Bot would get an item that is not a card',
   non_card: 'Item that is not a card (old entry)',
-  never_give: 'Card from "Never give" list',
-  never_get: 'Card from "Never get" list',
+  never_give: 'Card of a game the bot never gives',
+  never_get: 'Card of a game the bot never gets',
   never_list: 'Card from a "Never" list (old entry)',
   last_copy: 'Last copy of a protected card',
   inventory_missing: 'Inventory not loaded',
-  same_set_give: 'Protected card not in a same-set 1:1 swap',
-  same_set_get: '"Get only same set" card not in a 1:1 swap',
+  same_set_give: 'Card given outside of a same-set swap',
+  same_set_get: 'Card received outside of a same-set swap',
   same_set: 'Protected card not in a 1:1 swap (old entry)',
   sale_give: 'Sale card for fewer than 3 cards',
   unknown_type: 'Card type unknown (normal or foil)',
@@ -835,12 +835,15 @@ const LABELS = {
   uptimekuma_url: 'Uptime Kuma URL',
   uptimekuma_key: 'Uptime Kuma Key',
   prometheus_prefix: 'Prometheus prefix',
-  sale_cards_give_1_for_3_app_ids: 'Sale cards to give (1 for 3)',
-  sale_card_get_1_for_2_app_id: 'Sale card to get (1 for 2)',
+  sale_cards_give_1_for_3_app_ids: 'Sale cards: give 1, get 3',
+  sale_card_get_1_for_2_app_id: 'Sale card: get 1, give 2',
+  blocked_app_ids: 'Blocked',
   never_give_app_ids: 'Never give',
   never_get_app_ids: 'Never get',
-  give_only_same_set_duplicates_app_ids: 'Give only same-set duplicates (1:1)',
-  get_only_same_set_app_ids: 'Get only in same-set swaps (1:1)',
+  only_same_set_swap_app_ids: 'Only same-set swaps (1:1)',
+  only_give_1_for_2_app_ids: 'Only give 1 for 2',
+  only_get_2_for_1_app_ids: 'Only get 2 for 1',
+  give_only_duplicates_app_ids: 'Give only duplicates',
   auto_decline_clear_cases: 'Auto decline clear cases',
   ignore_messages_from: 'Ignore messages from',
   web_ui_enabled: 'Web UI enabled',
@@ -848,15 +851,50 @@ const LABELS = {
   web_auth_token: 'Web Auth Token',
 };
 
+// Help text under a field. Tells which trades are still allowed.
+// "Same-set swap": same game and same type (normal or foil), 1:1, 2:2, ...
+const HINTS = {
+  sale_cards_give_1_for_3_app_ids: 'Bot gives a card of these games only for 3 cards of other games (same type). '
+      + 'Allowed: same-set swaps, give 1 get 3, give 2 get 6, ...',
+  sale_card_get_1_for_2_app_id: 'One App ID. For each card of this game the bot gets, it gives 2 cards of other games (same type). '
+      + 'Allowed: get 1 give 2, get 2 give 4, ... and same-set swaps.',
+  blocked_app_ids: 'Bot never gives and never gets cards of these games. Nothing is allowed.',
+  never_give_app_ids: 'Bot never gives cards of these games, also not in same-set swaps. '
+      + 'Still allowed: get them in cross-set trades (unless an "Only" rule says no).',
+  never_get_app_ids: 'Bot never gets cards of these games, also not in same-set swaps. '
+      + 'Still allowed: give them in cross-set trades (unless an "Only" rule says no).',
+  only_same_set_swap_app_ids: 'Allows same-set swaps: same game and type, 1:1, 2:2, ... '
+      + 'Other trade kinds only if another "Only" rule allows them.',
+  only_give_1_for_2_app_ids: 'Allows to give these cards in cross-set trades: give 1, get 2 cards of other games (give 2 get 4, ...). '
+      + 'Other trade kinds only if another "Only" rule allows them.',
+  only_get_2_for_1_app_ids: 'Allows to get these cards in cross-set trades: get 2, give 1 card of another game (get 4 give 2, ...). '
+      + 'Other trade kinds only if another "Only" rule allows them.',
+  give_only_duplicates_app_ids: 'Bot gives cards of these games only if it keeps at least 1 copy of each card. '
+      + 'Works with all trade kinds the other rules allow.',
+  auto_decline_clear_cases: 'Bot declines clear cases by itself: it would give a non-card item, a card of a game it never gives, '
+      + 'or only last copies of protected cards in an N:N offer. Other declined offers stay open for a manual check.',
+  ignore_messages_from: 'SteamID64s. Chat messages from them are not forwarded and get no reply.',
+};
+
 // Config groups by topic. Fields without a group go to "Other".
 const CONFIG_GROUPS = [
   {
-    title: 'Trade rules',
+    title: 'Set rules',
+    intro: 'Rules per game (App IDs). You can put a game in more than one list. '
+        + 'Without an "Only" rule all trade kinds are allowed. With "Only" rules, only their trade kinds are allowed. '
+        + '"Never" rules and "Blocked" then remove trade kinds. '
+        + 'Example: "Only same-set swaps" + "Only give 1 for 2" = the bot swaps and gives these cards, but its count of them does not grow.',
     // Full width. give/get as pairs in 2 columns.
     full: true,
+    keys: ['never_give_app_ids', 'never_get_app_ids',
+      'only_give_1_for_2_app_ids', 'only_get_2_for_1_app_ids',
+      'only_same_set_swap_app_ids', 'give_only_duplicates_app_ids', 'blocked_app_ids']
+  },
+  {
+    title: 'Trade rules',
+    full: true,
     keys: ['sale_cards_give_1_for_3_app_ids', 'sale_card_get_1_for_2_app_id',
-      'never_give_app_ids', 'never_get_app_ids', 'give_only_same_set_duplicates_app_ids',
-      'get_only_same_set_app_ids', 'auto_decline_clear_cases', 'ignore_messages_from']
+      'auto_decline_clear_cases', 'ignore_messages_from']
   },
   {
     title: 'Steam',
@@ -882,6 +920,7 @@ async function loadConfig() {
   const byKey = new Map(fields.map(f => [f.key, f]));
   const groups = CONFIG_GROUPS.map(g => ({
     title: g.title,
+    intro: g.intro,
     full: g.full,
     fields: g.keys.map(k => byKey.get(k)).filter(Boolean),
   }));
@@ -895,7 +934,7 @@ async function loadConfig() {
   $('#configMsg').textContent = '';
 }
 
-function group({title, full, fields}) {
+function group({title, intro, full, fields}) {
   // Badge on the group if all fields need a restart
   // or none do. Else badge per field.
   const allRestart = fields.every(f => f.restartRequired);
@@ -905,7 +944,7 @@ function group({title, full, fields}) {
   const rows = fields.map(f => fieldRow(f, !allRestart && !noneRestart)).join(
       '');
   return `<fieldset class="field-group${full ? ' full'
-      : ''}"><legend>${title}${badge}</legend><div class="field-grid${full
+      : ''}"><legend>${title}${badge}</legend>${intro ? `<p class="hint">${escapeHtml(intro)}</p>` : ''}<div class="field-grid${full
       ? ' cols-2' : ''}">${rows}</div></fieldset>`;
 }
 
@@ -915,20 +954,24 @@ function fieldRow(f, showBadge) {
   const badge = showBadge && f.restartRequired
       ? '<span class="badge restart">Restart</span>' : '';
   const wide = WIDE_FIELDS.has(f.key) ? ' wide' : '';
+  const hintId = `${id}-hint`;
+  const hint = HINTS[f.key]
+      ? `<small class="field-hint" id="${hintId}">${escapeHtml(HINTS[f.key])}</small>` : '';
+  const describedBy = HINTS[f.key] ? ` aria-describedby="${hintId}"` : '';
   if (typeof f.value === 'boolean') {
-    return `<div class="field-row checkbox-row${wide}"><label for="${id}"><input type="checkbox" id="${id}" name="${f.key}" ${f.value
-        ? 'checked' : ''}> ${label}${badge}</label></div>`;
+    return `<div class="field-row checkbox-row${wide}"><label for="${id}"><input type="checkbox" id="${id}" name="${f.key}"${describedBy} ${f.value
+        ? 'checked' : ''}> ${label}${badge}</label>${hint}</div>`;
   }
   let input;
   if (f.secret) {
-    input = `<input type="password" id="${id}" name="${f.key}" autocomplete="new-password" placeholder="${f.isSet
+    input = `<input type="password" id="${id}" name="${f.key}"${describedBy} autocomplete="new-password" placeholder="${f.isSet
         ? '•••••• (set)' : 'not set'}">`;
   } else {
     const val = Array.isArray(f.value) ? f.value.join(', ') : (f.value ?? '');
-    input = `<input type="text" id="${id}" name="${f.key}" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" value="${escapeHtml(
+    input = `<input type="text" id="${id}" name="${f.key}"${describedBy} autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" value="${escapeHtml(
         String(val))}">`;
   }
-  return `<div class="field-row${wide}"><label for="${id}">${label}${badge}</label>${input}</div>`;
+  return `<div class="field-row${wide}"><label for="${id}">${label}${badge}</label>${input}${hint}</div>`;
 }
 
 $('#configForm').addEventListener('submit', async (e) => {

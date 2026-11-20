@@ -1186,6 +1186,13 @@ dialog::backdrop {
   }
 }
 
+.field-hint {
+  max-inline-size: 72ch;
+  color: var(--graphite);
+  font-size: var(--step--1);
+  line-height: 1.4;
+}
+
 .checkbox-row label {
   display: flex;
   align-items: center;
